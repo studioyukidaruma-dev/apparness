@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# apparness の main ブランチから apps/ を除いたスナップショットを作り、
-# apparness-harness リポジトリ（配布用テンプレート、harness-origin remote）の main へ同期する。
+# apparness の main ブランチから、apps/ と apparness 開発者向けメモ（ROADMAP.md, scripts/）を
+# 除いたスナップショットを作り、apparness-harness リポジトリ（配布用テンプレート、
+# harness-origin remote）の main へ同期する。
 #
 # ハーネス本体（harness/, .claude/, README.md, HARNESS_GUIDE.md/.pdf）に変更を加えて
 # main にマージ・pushした後、テンプレート配布先にも反映したいときに実行する。
@@ -28,13 +29,17 @@ fi
 
 CURRENT_BRANCH="$(git branch --show-current)"
 MAIN_SHA="$(git rev-parse --short main)"
+# apparness-harness (配布先) には含めない、apparness 開発者向けの内容
+EXCLUDE_PATHS=(apps ROADMAP.md scripts)
 
 echo "main (${MAIN_SHA}) から harness-template を再生成します..."
 
 git branch -D harness-template >/dev/null 2>&1 || true
 git checkout --orphan harness-template main
-git rm -r --cached apps >/dev/null 2>&1 || true
-rm -rf apps
+for p in "${EXCLUDE_PATHS[@]}"; do
+  git rm -r --cached -- "$p" >/dev/null 2>&1 || true
+  rm -rf -- "$p"
+done
 git add -A
 git commit -q -m "chore: harness-template を main (${MAIN_SHA}) から再生成"
 
