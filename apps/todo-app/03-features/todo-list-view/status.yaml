@@ -1,6 +1,6 @@
 feature_id: todo-list-view
 app_id: todo-app
-state: CONTRACT_APPROVED
+state: TESTED
 state_history:
 - state: NOT_STARTED
   at: '2026-08-19T12:57:32Z'
@@ -10,11 +10,23 @@ state_history:
   at: '2026-08-19T12:57:32Z'
   by: new-feature-worktree
   note: worktree scaffold created
+- state: IN_PROGRESS
+  at: '2026-08-19T13:00:00Z'
+  by: builder
+  note: implementation started
+- state: IMPLEMENTED
+  at: '2026-08-19T13:20:00Z'
+  by: builder
+  note: renderTodoListView implemented in src/ (DOM rendering, command/edit callbacks, overdue/priority classes, CSS)
+- state: TESTED
+  at: '2026-08-19T13:25:00Z'
+  by: builder
+  note: vitest run green (15 tests), tsc --noEmit clean
 assignee: null
 branch: feature/todo-app/todo-list-view
 worktree_path: apps/todo-app/.worktrees/todo-list-view
-contract_version: null
+contract_version: 1
 blockers: []
 superseded_by: null
-last_updated_at: '2026-08-19T12:57:32Z'
-updated_by: new-feature-worktree
+last_updated_at: '2026-08-19T13:25:00Z'
+updated_by: builder
