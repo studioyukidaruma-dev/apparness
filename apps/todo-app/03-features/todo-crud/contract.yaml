@@ -1,0 +1,137 @@
+# schema: harness/schemas/feature-contract.schema.json
+# この機能の入出力の唯一の情報源。担当者はこのファイルと SPEC.md だけを見れば実装できる。
+# CONTRACT_APPROVED 以降は harness/hooks/pre_tool_use_guard.py により書き込みが凍結される。
+feature_id: "todo-crud"
+feature_name: "Todo ドメインロジック"
+version: 1
+description: >-
+  TodoItem の追加・編集・削除・完了切替コマンドを受け取り、バリデーション
+  （タイトル必須など）を行った上で新しい TodoItem 配列を組み立てる、状態を持たない
+  純粋なドメインロジック（FR-1, FR-3, FR-4, FR-5, FR-6, FR-7, FR-8）。
+  localStorage や DOM には一切触れず、配列の入出力のみで完結する。
+
+inputs:
+  - name: "initial_todo_list"
+    json_schema:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: ["id", "title", "completed", "priority", "tags", "createdAt", "updatedAt"]
+        properties:
+          id: { type: string, format: uuid }
+          title: { type: string, minLength: 1, maxLength: 200 }
+          completed: { type: boolean }
+          dueDate: { type: ["string", "null"], format: date }
+          priority: { type: string, enum: ["high", "medium", "low"] }
+          tags: { type: array, items: { type: string, minLength: 1 } }
+          createdAt: { type: string, format: date-time }
+          updatedAt: { type: string, format: date-time }
+    required: true
+    description: >-
+      アプリ起動時に todo-storage から渡される、保存済みの TodoItem 配列。
+      これを初期状態としてこの機能内のメモリ上の状態が始まる。
+    example: []
+
+  - name: "todo_command"
+    json_schema:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: ["type", "title", "priority", "tags"]
+          properties:
+            type: { const: "add" }
+            title: { type: string, minLength: 1, maxLength: 200 }
+            dueDate: { type: ["string", "null"], format: date }
+            priority: { type: string, enum: ["high", "medium", "low"] }
+            tags: { type: array, items: { type: string, minLength: 1 } }
+        - type: object
+          additionalProperties: false
+          required: ["type", "id", "title", "priority", "tags"]
+          properties:
+            type: { const: "edit" }
+            id: { type: string, format: uuid }
+            title: { type: string, minLength: 1, maxLength: 200 }
+            dueDate: { type: ["string", "null"], format: date }
+            priority: { type: string, enum: ["high", "medium", "low"] }
+            tags: { type: array, items: { type: string, minLength: 1 } }
+        - type: object
+          additionalProperties: false
+          required: ["type", "id"]
+          properties:
+            type: { const: "toggle_complete" }
+            id: { type: string, format: uuid }
+        - type: object
+          additionalProperties: false
+          required: ["type", "id"]
+          properties:
+            type: { const: "delete" }
+            id: { type: string, format: uuid }
+    required: true
+    description: >-
+      todo-form（add/edit）または todo-list-view（toggle_complete/delete）から渡される
+      1件のコマンド。この機能は現在の内部状態にコマンドを適用し、新しい TodoItem 配列を
+      todo_list として出力する。
+    example: { type: "toggle_complete", id: "6f2a9a2e-5b8c-4b2b-9f9a-4a2b2c1e0001" }
+
+outputs:
+  - name: "todo_list"
+    json_schema:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: ["id", "title", "completed", "priority", "tags", "createdAt", "updatedAt"]
+        properties:
+          id: { type: string, format: uuid }
+          title: { type: string, minLength: 1, maxLength: 200 }
+          completed: { type: boolean }
+          dueDate: { type: ["string", "null"], format: date }
+          priority: { type: string, enum: ["high", "medium", "low"] }
+          tags: { type: array, items: { type: string, minLength: 1 } }
+          createdAt: { type: string, format: date-time }
+          updatedAt: { type: string, format: date-time }
+    description: >-
+      コマンド適用後（または初期ロード直後）の TodoItem 配列全体。
+      todo-storage（永続化用）と todo-filter-sort（表示用の絞り込み・並び替え対象）の
+      両方に渡される。
+
+side_effects: []
+
+error_cases:
+  - code: "EMPTY_TITLE"
+    condition: "add/edit コマンドの title が空文字、または空白のみ"
+    response_shape:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }
+  - code: "TODO_NOT_FOUND"
+    condition: "edit/toggle_complete/delete コマンドの id が現在の状態に存在しない"
+    response_shape:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }
+
+tech_stack:
+  language: "TypeScript"
+  framework: ""
+  libraries:
+    - name: "vitest"
+      version: "^4.1.0"
+      license: "MIT"
+      notes: "単体テスト用（devDependency）。純粋関数のためDOM/ストレージのモックは不要。MITで活発にメンテナンスされている。"
+
+non_functional:
+  determinism: "同一の初期状態とコマンド列に対して常に同一の結果を返す純粋なロジックとする"
+  id_generation: "add コマンド適用時の id 発行には crypto.randomUUID() を用いる想定（secure context前提）"
+
+test_strategy: >-
+  vitestによる単体テスト。add/edit/toggle_complete/delete それぞれの正常系、
+  EMPTY_TITLE、TODO_NOT_FOUND の異常系、複数コマンドを連続適用した際の
+  createdAt/updatedAt の扱いを検証する。
+
+created_at: "2026-08-19T00:00:00Z"
+approved_at: null
+approved_by: null
