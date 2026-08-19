@@ -1,6 +1,6 @@
 feature_id: todo-crud
 app_id: todo-app
-state: CONTRACT_APPROVED
+state: TESTED
 state_history:
 - state: NOT_STARTED
   at: '2026-08-19T12:57:32Z'
@@ -10,11 +10,23 @@ state_history:
   at: '2026-08-19T12:57:32Z'
   by: new-feature-worktree
   note: worktree scaffold created
+- state: IN_PROGRESS
+  at: '2026-08-19T00:00:00Z'
+  by: builder
+  note: implementation started
+- state: IMPLEMENTED
+  at: '2026-08-19T00:00:00Z'
+  by: builder
+  note: applyTodoCommand (add/edit/toggle_complete/delete) implemented in src/
+- state: TESTED
+  at: '2026-08-19T00:00:00Z'
+  by: builder
+  note: 'vitest run: 17 passed, tsc --noEmit: no errors'
 assignee: null
 branch: feature/todo-app/todo-crud
 worktree_path: apps/todo-app/.worktrees/todo-crud
-contract_version: null
+contract_version: 1
 blockers: []
 superseded_by: null
-last_updated_at: '2026-08-19T12:57:32Z'
-updated_by: new-feature-worktree
+last_updated_at: '2026-08-19T00:00:00Z'
+updated_by: builder
