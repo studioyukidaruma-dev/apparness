@@ -1,6 +1,6 @@
 feature_id: todo-form
 app_id: todo-app
-state: CONTRACT_APPROVED
+state: TESTED
 state_history:
 - state: NOT_STARTED
   at: '2026-08-19T12:57:32Z'
@@ -10,11 +10,23 @@ state_history:
   at: '2026-08-19T12:57:32Z'
   by: new-feature-worktree
   note: worktree scaffold created
+- state: IN_PROGRESS
+  at: '2026-08-19T13:10:00Z'
+  by: builder
+  note: start implementation
+- state: IMPLEMENTED
+  at: '2026-08-19T13:30:00Z'
+  by: builder
+  note: createTodoForm実装完了（src/formLogic.ts, src/todoForm.ts, src/types.ts, src/index.ts）
+- state: TESTED
+  at: '2026-08-19T13:35:00Z'
+  by: builder
+  note: vitest(jsdom) 30件全て成功、tsc --noEmitも成功
 assignee: null
 branch: feature/todo-app/todo-form
 worktree_path: apps/todo-app/.worktrees/todo-form
 contract_version: null
 blockers: []
 superseded_by: null
-last_updated_at: '2026-08-19T12:57:32Z'
-updated_by: new-feature-worktree
+last_updated_at: '2026-08-19T13:35:00Z'
+updated_by: builder
