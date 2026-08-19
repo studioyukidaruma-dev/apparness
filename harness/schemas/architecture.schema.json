@@ -66,6 +66,10 @@
       }
     },
     "superseded_by": { "type": ["integer", "null"] },
-    "updated_at": { "type": ["string", "null"], "format": "date-time" }
-  }
+    "updated_at": { "type": ["string", "null"], "format": "date-time" },
+    "approved_by": { "type": ["string", "null"] },
+    "approved_at": { "type": ["string", "null"], "format": "date-time" }
+  },
+  "if": { "properties": { "status": { "const": "APPROVED" } } },
+  "then": { "properties": { "approved_by": { "type": "string", "minLength": 1 }, "approved_at": { "type": "string" } } }
 }

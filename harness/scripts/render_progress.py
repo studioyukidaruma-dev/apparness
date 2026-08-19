@@ -70,8 +70,10 @@ def render_app(app_dir: pathlib.Path) -> None:
 
     requirements_path = app_dir / "00-requirements" / "requirements.machine.yaml"
     architecture_path = app_dir / "02-design" / "architecture.machine.yaml"
+    autonomy_path = app_dir / "AUTONOMY.yaml"
     req_status = "N/A"
     design_status = "N/A"
+    autonomy_mode = "N/A"
     if requirements_path.exists():
         try:
             req_status = _common.load_yaml(requirements_path).get("status", "N/A")
@@ -82,13 +84,18 @@ def render_app(app_dir: pathlib.Path) -> None:
             design_status = _common.load_yaml(architecture_path).get("status", "N/A")
         except Exception:  # noqa: BLE001
             pass
+    if autonomy_path.exists():
+        try:
+            autonomy_mode = _common.load_yaml(autonomy_path).get("mode", "N/A")
+        except Exception:  # noqa: BLE001
+            pass
 
-    _write_progress_md(app_dir, app_id, req_status, design_status, statuses)
-    _write_state_machine_yaml(app_dir, app_id, req_status, design_status, statuses)
+    _write_progress_md(app_dir, app_id, req_status, design_status, autonomy_mode, statuses)
+    _write_state_machine_yaml(app_dir, app_id, req_status, design_status, autonomy_mode, statuses)
     print(f"再生成しました: {app_dir / 'PROGRESS.md'}, {app_dir / 'STATE.machine.yaml'}")
 
 
-def _write_progress_md(app_dir, app_id, req_status, design_status, statuses) -> None:
+def _write_progress_md(app_dir, app_id, req_status, design_status, autonomy_mode, statuses) -> None:
     lines = []
     lines.append(f"# 進捗ダッシュボード: {app_id}")
     lines.append("")
@@ -97,6 +104,8 @@ def _write_progress_md(app_dir, app_id, req_status, design_status, statuses) -> 
     lines.append("")
     lines.append(f"生成日時: {_common.now_iso()}")
     lines.append("")
+    lines.append(f"- 自動化モード (autonomy_mode): **{autonomy_mode}**"
+                  f"（`AUTONOMY.yaml` 参照。要件定義の承認はモードに関わらず常に人間必須）")
     lines.append(f"- 要件定義 (00-requirements): **{req_status}**")
     lines.append(f"- 設計 (02-design): **{design_status}**")
     lines.append("")
@@ -152,10 +161,11 @@ def _write_progress_md(app_dir, app_id, req_status, design_status, statuses) -> 
     (app_dir / "PROGRESS.md").write_text("\n".join(lines), encoding="utf-8")
 
 
-def _write_state_machine_yaml(app_dir, app_id, req_status, design_status, statuses) -> None:
+def _write_state_machine_yaml(app_dir, app_id, req_status, design_status, autonomy_mode, statuses) -> None:
     state = {
         "app_id": app_id,
         "generated_at": _common.now_iso(),
+        "autonomy_mode": autonomy_mode,
         "requirements_status": req_status,
         "design_status": design_status,
         "features": [

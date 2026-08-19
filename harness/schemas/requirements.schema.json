@@ -10,7 +10,7 @@
     "app_id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
     "app_name": { "type": "string", "minLength": 1 },
     "version": { "type": "integer", "minimum": 1 },
-    "status": { "type": "string", "enum": ["DRAFT", "APPROVED"] },
+    "status": { "type": "string", "enum": ["DRAFT", "APPROVED", "SUPERSEDED"] },
     "summary": { "type": "string", "minLength": 1 },
     "goals": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
     "non_goals": { "type": "array", "items": { "type": "string" } },
@@ -46,6 +46,9 @@
     "constraints": { "type": "array", "items": { "type": "string" } },
     "open_questions": { "type": "array", "items": { "type": "string" } },
     "approved_by": { "type": ["string", "null"] },
-    "approved_at": { "type": ["string", "null"], "format": "date-time" }
-  }
+    "approved_at": { "type": ["string", "null"], "format": "date-time" },
+    "superseded_by": { "type": ["integer", "null"] }
+  },
+  "if": { "properties": { "status": { "const": "APPROVED" } } },
+  "then": { "properties": { "approved_by": { "type": "string", "minLength": 1 }, "approved_at": { "type": "string" } } }
 }

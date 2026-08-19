@@ -26,7 +26,12 @@ tools: Read, Write, Edit, Glob, Grep, AskUserQuestion, Bash
 3. `requirements.md`（人間向け）と `requirements.machine.yaml`（機械向け）を**必ず同時に**更新し、内容を一致させる。
 4. 更新のたびに `python3 harness/scripts/validate_yaml.py apps/<app-id>/00-requirements/requirements.machine.yaml harness/schemas/requirements.schema.json` でスキーマ適合を確認する。
 5. 未解決事項が無くなったら `open_questions` を空にし、要約をユーザーに提示して承認を求める。
+   **`apps/<app-id>/AUTONOMY.yaml` の `mode` が `AUTONOMOUS` であっても、この承認だけは省略せず
+   必ずユーザーの明示的な返答を待ってください。** 要件定義の承認は、モードに関わらず常に人間必須という
+   ハーネス全体の固定ポリシーです（`harness/CONVENTIONS.md` 9 節）。
 6. 承認されたら `status: APPROVED`、`approved_by`、`approved_at`（`date -u +%Y-%m-%dT%H:%M:%SZ` 等で取得）を設定する。
+7. 内容を更新するたびに `git add -A && git commit` して記録する（未コミットのままだと後続フェーズが
+   作業の起点にできません）。
 
 ## 完了後
 

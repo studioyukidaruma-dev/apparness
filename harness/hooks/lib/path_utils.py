@@ -96,6 +96,95 @@ def read_state_field(status_yaml_path) -> str | None:
     return None
 
 
+def simulate_write_result(tool_name: str, tool_input: dict, current_content: str) -> str:
+    """PreToolUse 時点でまだ書き込まれていない、書き込み後のファイル内容をシミュレートする。
+    Edit/MultiEdit はファイル全体を渡してこないため、Rule7 のような「書き込み後の内容」を
+    見て判定するルールはこれで再現してから検査する。
+    """
+    if tool_name == "Write":
+        return tool_input.get("content", "")
+    if tool_name == "Edit":
+        old = tool_input.get("old_string", "")
+        new = tool_input.get("new_string", "")
+        count = -1 if tool_input.get("replace_all") else 1
+        return current_content.replace(old, new, count)
+    if tool_name == "MultiEdit":
+        content = current_content
+        for edit in tool_input.get("edits", []) or []:
+            old = edit.get("old_string", "")
+            new = edit.get("new_string", "")
+            if edit.get("replace_all"):
+                content = content.replace(old, new)
+            else:
+                content = content.replace(old, new, 1)
+        return content
+    return current_content
+
+
+def extract_scalar_field(content: str, key: str) -> str | None:
+    """文字列コンテンツ（ファイルではなく）から `key: value` 形式の行を正規表現で軽量抽出する。"""
+    m = re.search(rf"^\s*{re.escape(key)}\s*:\s*(\S.*?)\s*$", content, re.MULTILINE)
+    if not m:
+        return None
+    return m.group(1).strip().strip('"\'')
+
+
+def extract_required_skills(content: str) -> list[dict]:
+    """shared-kernel.yaml の `required_skills:` リストを軽量パースする。
+    `- name: "..."` に続く `plugin_ref: "..."` / `purpose: "..."` を同一エントリとして拾う。
+    フルな YAML パーサーではなく、テンプレートで規定した書式のみを前提にする。
+    """
+    m = re.search(r"^required_skills\s*:\s*(\[\s*\])?\s*$", content, re.MULTILINE)
+    if not m or m.group(1) is not None:
+        return []
+    start = m.end()
+    # 次のトップレベルキー（インデントなしの `key:` 行）までを required_skills のブロックとみなす。
+    # PyYAML のデフォルト出力はリスト項目 `- name: ...` をインデントせず親キーと同じ列に置くため、
+    # `^\S` のような単純な判定だとリスト項目自体を「次のキー」と誤検知する。`- ` で始まる行は除外する。
+    block_match = re.search(r"^(?!-\s)[A-Za-z_]\S*\s*:", content[start:], re.MULTILINE)
+    block = content[start:start + block_match.start()] if block_match else content[start:]
+
+    skills: list[dict] = []
+    current: dict | None = None
+    for line in block.splitlines():
+        name_m = re.match(r"^\s*-\s*name\s*:\s*(.+?)\s*$", line)
+        if name_m:
+            if current:
+                skills.append(current)
+            current = {"name": name_m.group(1).strip().strip('"\'')}
+            continue
+        if current is not None:
+            for key in ("plugin_ref", "purpose"):
+                field_m = re.match(rf"^\s*{key}\s*:\s*(.+?)\s*$", line)
+                if field_m:
+                    current[key] = field_m.group(1).strip().strip('"\'')
+    if current:
+        skills.append(current)
+    return skills
+
+
+def get_enabled_plugins(repo_root: str) -> set[str]:
+    """.claude/settings.json と .claude/settings.local.json の enabledPlugins をマージして返す。
+    キー形式は "<plugin-name>@<marketplace>"。JSON 標準ライブラリのみ使用。
+    """
+    import os
+
+    enabled: set[str] = set()
+    for name in ("settings.json", "settings.local.json"):
+        path = os.path.join(repo_root, ".claude", name)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            continue
+        plugins = data.get("enabledPlugins")
+        if isinstance(plugins, dict):
+            enabled.update(k for k, v in plugins.items() if v)
+        elif isinstance(plugins, list):
+            enabled.update(plugins)
+    return enabled
+
+
 def deny(reason: str) -> None:
     print(reason, file=sys.stderr)
     sys.exit(2)

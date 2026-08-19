@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PreToolUse hook: harness/CONVENTIONS.md 7節の Rule 1〜3 を強制する。
+"""PreToolUse hook: harness/CONVENTIONS.md 7節の Rule 1〜7 を強制する。
 **依存ゼロ**（標準ライブラリのみ）。Edit/Write/MultiEdit/NotebookEdit は確実にブロックする。
 Bash 経由の間接書き込みは v0 では警告のみで非ブロック（誤検知回避のため）。
 
@@ -15,13 +15,21 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
 import path_utils  # noqa: E402
 
 HARNESS_PATH_RE = re.compile(r"^(harness/|\.claude/)")
+# 個人のローカル設定（gitignore 対象、チームに共有されない）はハーネス非侵襲性の対象外。
+# 例: `/plugin install <name> --scope local` は .claude/settings.local.json に書き込む。
+HARNESS_PATH_EXEMPT_RE = re.compile(r"^\.claude/settings\.local\.json$")
 FEATURE_SCOPE_RE = re.compile(r"^apps/([^/]+)/03-features/([^/]+)/(.*)$")
 FEATURE_CONTRACT_RE = re.compile(r"^apps/([^/]+)/03-features/([^/]+)/contract\.yaml$")
 DESIGN_CONTRACT_RE = re.compile(r"^apps/([^/]+)/02-design/features/([^/]+)\.contract\.yaml$")
+FEATURE_SRC_RE = re.compile(r"^apps/([^/]+)/03-features/([^/]+)/src/")
+APP_UPSTREAM_DOC_RE = re.compile(r"^apps/([^/]+)/(00-requirements|01-foundation|02-design)/")
+ARCHITECTURE_RE = re.compile(r"^apps/([^/]+)/02-design/architecture\.machine\.yaml$")
 
 
 def check_rule1_harness_immutability(rel_path: str, cwd: str) -> str | None:
     if not HARNESS_PATH_RE.match(rel_path):
+        return None
+    if HARNESS_PATH_EXEMPT_RE.match(rel_path):
         return None
     if os.environ.get("HARNESS_UNLOCK") == "1":
         print(f"警告: HARNESS_UNLOCK=1 により {rel_path} への書き込みガードを解除しています", file=sys.stderr)
@@ -56,6 +64,86 @@ def check_rule2_feature_scope(rel_path: str, cwd: str) -> str | None:
     )
 
 
+def check_rule6_foundation_scope(rel_path: str, toplevel: str) -> str | None:
+    m = APP_UPSTREAM_DOC_RE.match(rel_path)
+    if not m:
+        return None
+    if "/.worktrees/" not in toplevel.replace(os.sep, "/") + "/":
+        return None  # feature 用 worktree 以外（メインリポジトリ）からの書き込みは対象外
+    return (
+        f"拒否: {rel_path} は feature-builder の担当範囲外です（要件・共有基盤・設計文書は編集できません）。\n"
+        f"実装中に設計変更が必要だと気づいた場合は、実装を止めてユーザーに報告し、"
+        f"`diff-design` skill での再設計に回してください。"
+    )
+
+
+def check_rule5_required_skills(rel_path: str, toplevel: str) -> str | None:
+    m = FEATURE_SRC_RE.match(rel_path)
+    if not m:
+        return None
+    app_id, _feature_id = m.groups()
+    shared_kernel_path = os.path.join(toplevel, f"apps/{app_id}/01-foundation/shared-kernel.yaml")
+    try:
+        with open(shared_kernel_path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except OSError:
+        return None  # shared-kernel.yaml が無ければ判定不能、ブロックしない
+    skills = path_utils.extract_required_skills(content)
+    if not skills:
+        return None
+    enabled = path_utils.get_enabled_plugins(toplevel)
+    missing = [s for s in skills if s.get("plugin_ref") and s["plugin_ref"] not in enabled]
+    if not missing:
+        return None
+    lines = [
+        "拒否: この機能の実装には、設計で必須と定められた Skill が不足しています。"
+        "実装を始める前にインストールしてください:"
+    ]
+    for s in missing:
+        lines.append(f"  - {s.get('name')}: `/plugin install {s['plugin_ref']} --scope local`")
+    lines.append(
+        "インストール後、セッションを再開してから実装を再開してください"
+        "（設計で決めた Skill を使わずに実装を進めることはできません）。"
+    )
+    return "\n".join(lines)
+
+
+def check_rule7_requirements_consistency(rel_path: str, tool_name: str, tool_input: dict, toplevel: str) -> str | None:
+    m = ARCHITECTURE_RE.match(rel_path)
+    if not m:
+        return None
+    app_id = m.group(1)
+    arch_path = os.path.join(toplevel, rel_path)
+    try:
+        with open(arch_path, "r", encoding="utf-8") as f:
+            current_content = f.read()
+    except OSError:
+        current_content = ""
+    new_content = path_utils.simulate_write_result(tool_name, tool_input, current_content)
+    new_status = path_utils.extract_scalar_field(new_content, "status")
+    if new_status != "APPROVED":
+        return None
+    based_on = path_utils.extract_scalar_field(new_content, "based_on_requirements_version")
+    requirements_path = os.path.join(toplevel, f"apps/{app_id}/00-requirements/requirements.machine.yaml")
+    req_version = None
+    try:
+        with open(requirements_path, "r", encoding="utf-8") as f:
+            req_version = path_utils.extract_scalar_field(f.read(), "version")
+    except OSError:
+        pass
+    if req_version is None or based_on is None:
+        return None  # 判定不能ならブロックしない
+    if based_on != req_version:
+        return (
+            f"拒否: architecture.machine.yaml を status: APPROVED にしようとしていますが、\n"
+            f"based_on_requirements_version ({based_on}) が requirements.machine.yaml の"
+            f"現在の version ({req_version}) と一致しません。要件が変更されている可能性があります。\n"
+            f"based_on_requirements_version を最新の version に更新するか、要件との食い違いを"
+            f"解消してから再度 APPROVED にしてください。"
+        )
+    return None
+
+
 def check_rule3_contract_freeze(rel_path: str, toplevel: str) -> str | None:
     m = FEATURE_CONTRACT_RE.match(rel_path)
     if m:
@@ -82,12 +170,26 @@ def check_rule3_contract_freeze(rel_path: str, toplevel: str) -> str | None:
     return None
 
 
-def run_checks(rel_path: str, cwd: str, toplevel: str) -> str | None:
+def run_checks(
+    rel_path: str, cwd: str, toplevel: str, tool_name: str = "", tool_input: dict | None = None
+) -> str | None:
+    tool_input = tool_input or {}
     for check in (check_rule1_harness_immutability, check_rule2_feature_scope):
         reason = check(rel_path, cwd)
         if reason:
             return reason
-    return check_rule3_contract_freeze(rel_path, toplevel)
+    for check in (check_rule6_foundation_scope, check_rule5_required_skills):
+        reason = check(rel_path, toplevel)
+        if reason:
+            return reason
+    reason = check_rule3_contract_freeze(rel_path, toplevel)
+    if reason:
+        return reason
+    if tool_name in ("Edit", "Write", "MultiEdit"):
+        reason = check_rule7_requirements_consistency(rel_path, tool_name, tool_input, toplevel)
+        if reason:
+            return reason
+    return None
 
 
 def main() -> int:
@@ -119,7 +221,7 @@ def main() -> int:
 
     for abs_path in path_utils.extract_structured_edit_paths(tool_name, tool_input):
         rel_path = path_utils.to_worktree_relative(abs_path, toplevel)
-        reason = run_checks(rel_path, cwd, toplevel)
+        reason = run_checks(rel_path, cwd, toplevel, tool_name, tool_input)
         if reason:
             print(reason, file=sys.stderr)
             return 2

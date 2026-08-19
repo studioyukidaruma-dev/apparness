@@ -19,18 +19,27 @@ PyYAML / jsonschema を使います。）
 ## 全体フロー
 
 ```
-1. init-app skill        → 00-requirements/ の雛形生成 + requirements-analyst へ引き継ぎ
-2. requirements-analyst   → requirements.md / requirements.machine.yaml を作成・承認
-3. solution-architect      → shared-kernel.yaml / architecture.machine.yaml / 各 feature の
+0. init-app skill        → autonomy_mode を確認、00-requirements/ の雛形生成 +
+                              requirements-analyst へ引き継ぎ
+1. requirements-analyst   → requirements.md / requirements.machine.yaml を作成・承認
+                              （この承認だけは autonomy_mode に関わらず常に人間必須）
+2. solution-architect      → shared-kernel.yaml / architecture.machine.yaml / 各 feature の
                               contract ドラフトを作成・承認（独立機能への分割はここで行う）
-4. new-feature-worktree skill（機能ごとに繰り返す）
+3. new-feature-worktree skill（機能ごとに繰り返す）
                             → git worktree 作成 + SPEC.md/contract.yaml/status.yaml 雛形生成
-5. feature-builder          → 各 worktree 内で機能を実装（担当者ごと・並行可能）
-6. integrator                → 全機能 TESTED 後、merge して結線し 04-integration/ を作成
+4. feature-builder          → 各 worktree 内で機能を実装（担当者ごと・並行可能）
+5. integrator                → 全機能 TESTED 後、merge して結線し、結合テストコードを書いて
+                              04-integration/ に残す
 ```
 
 いつ中断しても、`apps/<app-id>/STATE.machine.yaml`（機械向け）と `PROGRESS.md`（人間向け）を見れば
 どこまで終わっているか・次に何をすべきかが分かります。この 2 ファイルは自動生成なので手書きしないでください。
+`PROGRESS.md` には現在の `autonomy_mode` も表示されます。
+
+## 自動化の度合い
+
+各アプリは `AUTONOMY.yaml` で `MANUAL` / `SUPERVISED`（デフォルト） / `AUTONOMOUS` のいずれかの
+モードを持ちます。詳細は `CONVENTIONS.md` 9 節。要件定義の承認だけはモードに関わらず常に人間必須です。
 
 ## 仕様変更・要件追加が生じたら
 
@@ -46,17 +55,41 @@ PyYAML / jsonschema を使います。）
 - `harness/templates/` — 各種ドキュメントのひな形
 - `harness/schemas/` — machine-readable ファイルの JSON Schema
 - `harness/scripts/` — scaffold 生成・進捗再生成・設計差分計算などの決定論ロジック
+- `harness/quality/` — セキュリティ・デザインの最低ラインを定めるベースライン文書
+
+## 品質保証（セキュリティ・デザイン）
+
+外部Skillの有無で品質が変わってしまわないよう、二層構造にしています。詳細は `CONVENTIONS.md` 10 節。
+
+1. `harness/quality/security-baseline.md` / `design-baseline.md` — 何もインストールしなくても
+   常に効く最低ライン。該当フェーズで各 subagent が都度読む。
+2. Claude Code 標準搭載の `security-review` / `code-review` skill — `integrator` と
+   `feature-builder` が必須ステップとして実行する。
+3. `required_skills[]`（`shared-kernel.yaml`） — デザイン系 Skill（`frontend-design` 等）や
+   `find-skills` 経由の専門ルール集を使うと決めたら `solution-architect` がここに記録する。
+   「あれば使う」ではなく「設計で決めたら実装フェーズの必須要件」で、Hook が実装開始前に
+   機械的に検証し、欠けていればブロックする（無指定なら 1・2 のみで進む）。
+
+## 上位文書優先の原則
+
+要件定義 > 設計 > 機能契約の順で重要度が高く、下位の文書は上位の文書と常に整合している必要が
+あります。詳細は `CONVENTIONS.md` 11 節。要件が変わったら `diff-design` skill で要件定義書自体を
+新しいバージョンとして書き直し（旧バージョンは `00-requirements/history/` に退避）、設計の
+`based_on_requirements_version` が要件の現在の `version` と一致しない限り、設計を承認済みにする
+ことは Hook が拒否します（Rule 7）。
 
 ## Hooks が強制する約束事項
 
-`CONVENTIONS.md` 7 節を参照。ハーネス非侵襲性・担当外ガード・契約凍結・進捗自動再生成の 4 つを
-Claude Code の PreToolUse / PostToolUse hooks で強制しています。AI の自己申告には頼っていません。
+`CONVENTIONS.md` 7 節を参照。ハーネス非侵襲性・担当外ガード・契約凍結・進捗自動再生成・
+必須Skillの充足ゲート・上位文書ガード・要件↔設計の整合性ゲートの 7 つを Claude Code の
+PreToolUse / PostToolUse hooks で強制しています。AI の自己申告には頼っていません。
 
 ## 既知の制約（v0 スコープ）
 
 - Bash 経由の間接的な書き込み（`sed -i` 等）は検知しても警告のみで、ブロックしません。
 - 状態遷移（`status.yaml` の `state`）の妥当性チェックはまだありません。
 - CI との連携はまだありません（Claude Code Hooks のみで完結させています）。
-- ライブラリの脆弱性スキャンは自動化されておらず、`solution-architect` の調査に依存しています。
+- ライブラリの脆弱性スキャンは自動化されておらず、`solution-architect` の調査と `security-review`
+  skill（利用可能な場合）に依存しています。
 
 これらは実際にアプリを 1 本作ってみてから、必要に応じて拡張してください。
