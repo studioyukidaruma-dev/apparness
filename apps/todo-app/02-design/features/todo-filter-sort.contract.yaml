@@ -1,0 +1,103 @@
+# schema: harness/schemas/feature-contract.schema.json
+# この機能の入出力の唯一の情報源。担当者はこのファイルと SPEC.md だけを見れば実装できる。
+# CONTRACT_APPROVED 以降は harness/hooks/pre_tool_use_guard.py により書き込みが凍結される。
+feature_id: "todo-filter-sort"
+feature_name: "絞り込み・並び替え"
+version: 1
+description: >-
+  TodoItem 配列を、完了状態・期限・優先度による絞り込みと並び替え条件に基づいて
+  加工し、表示用の配列を出力する（FR-9, SHOULD）。絞り込み・並び替え条件を選択する
+  UI コントロール自体もこの機能に含み、条件はユーザーのその場の操作から得る
+  （他機能からの入力ではない）。
+
+inputs:
+  - name: "source_todo_list"
+    json_schema:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: ["id", "title", "completed", "priority", "tags", "createdAt", "updatedAt"]
+        properties:
+          id: { type: string, format: uuid }
+          title: { type: string, minLength: 1, maxLength: 200 }
+          completed: { type: boolean }
+          dueDate: { type: ["string", "null"], format: date }
+          priority: { type: string, enum: ["high", "medium", "low"] }
+          tags: { type: array, items: { type: string, minLength: 1 } }
+          createdAt: { type: string, format: date-time }
+          updatedAt: { type: string, format: date-time }
+    required: true
+    description: "todo-crud から渡される、絞り込み・並び替え前の TodoItem 配列全体。"
+    example: []
+
+  - name: "filter_sort_criteria"
+    json_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        completedFilter:
+          type: string
+          enum: ["all", "completed", "incomplete"]
+          default: "all"
+        sortBy:
+          type: string
+          enum: ["none", "dueDate", "priority"]
+          default: "none"
+        sortOrder:
+          type: string
+          enum: ["asc", "desc"]
+          default: "asc"
+    required: false
+    description: >-
+      この機能自身が提供するフィルタ/ソートUIコントロールへのユーザー操作から得られる条件。
+      他機能からの出力ではなく、この機能の内部入力（自己完結）。未指定時は全件・並び替えなし
+      （＝入力順）として扱う。
+    example: { completedFilter: "incomplete", sortBy: "dueDate", sortOrder: "asc" }
+
+outputs:
+  - name: "display_todo_list"
+    json_schema:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: ["id", "title", "completed", "priority", "tags", "createdAt", "updatedAt"]
+        properties:
+          id: { type: string, format: uuid }
+          title: { type: string, minLength: 1, maxLength: 200 }
+          completed: { type: boolean }
+          dueDate: { type: ["string", "null"], format: date }
+          priority: { type: string, enum: ["high", "medium", "low"] }
+          tags: { type: array, items: { type: string, minLength: 1 } }
+          createdAt: { type: string, format: date-time }
+          updatedAt: { type: string, format: date-time }
+    description: >-
+      filter_sort_criteria を適用した後の TodoItem 配列。todo-list-view が
+      そのまま描画する前提の並び順で出力する。
+    example: []
+
+side_effects: []
+
+error_cases: []
+
+tech_stack:
+  language: "TypeScript"
+  framework: ""
+  libraries:
+    - name: "vitest"
+      version: "^4.1.0"
+      license: "MIT"
+      notes: "単体テスト用（devDependency）。絞り込み・並び替えロジックは純粋関数として実装しDOM非依存にする。"
+
+non_functional:
+  usability: "フィルタ・ソート条件の切り替え結果が即座に反映されること"
+
+test_strategy: >-
+  vitestによる純粋関数の単体テスト。completedFilter各値での絞り込み結果、
+  sortBy(dueDate/priority)×sortOrder(asc/desc)の組み合わせでの並び替え結果、
+  criteria未指定時に全件・入力順のまま出力されることを検証する。
+
+created_at: "2026-08-19T00:00:00Z"
+approved_at: null
+approved_by: null

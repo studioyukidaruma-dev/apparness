@@ -1,0 +1,152 @@
+# schema: harness/schemas/architecture.schema.json
+# features[] は互いに depends_on を持たない。つながりは interfaces[] でのみ表現する。
+app_id: "todo-app"
+design_version: 1
+based_on_requirements_version: 1
+status: APPROVED
+shared_kernel_ref: "../01-foundation/shared-kernel.yaml"
+features:
+  - id: "todo-storage"
+    name: "永続化アダプタ"
+    description: >-
+      ブラウザの localStorage への TodoItem 配列の読み書きだけを担う。
+      アプリ起動時に保存済みデータを読み込んで出力し、他機能から渡された最新の
+      TodoItem 配列を受け取って保存する（FR-10）。localStorage の実装詳細は
+      この機能に閉じ、他機能はデータ構造としてのみやり取りする。
+    contract_ref: "features/todo-storage.contract.yaml"
+    status_ref: "../03-features/todo-storage/status.yaml"
+    tech_stack:
+      language: "TypeScript"
+      framework: ""
+      libraries:
+        - name: "vitest"
+          version: "^4.1.0"
+          license: "MIT"
+          notes: "単体テスト用（devDependency）。localStorage の読み書きロジックをテスト。"
+        - name: "jsdom"
+          version: "^28.0.0"
+          license: "MIT"
+          notes: "テスト環境で window.localStorage をシミュレートするため（devDependency）。"
+
+  - id: "todo-crud"
+    name: "Todo ドメインロジック"
+    description: >-
+      TodoItem の追加・編集・削除・完了切替というコマンドを受け取り、バリデーション
+      （タイトル必須など）を行った上で新しい TodoItem 配列を組み立てる、状態を持たない
+      純粋なドメインロジック（FR-1, FR-3, FR-4, FR-5, FR-6, FR-7, FR-8）。
+      localStorage や DOM には一切触れない。
+    contract_ref: "features/todo-crud.contract.yaml"
+    status_ref: "../03-features/todo-crud/status.yaml"
+    tech_stack:
+      language: "TypeScript"
+      framework: ""
+      libraries:
+        - name: "vitest"
+          version: "^4.1.0"
+          license: "MIT"
+          notes: "単体テスト用（devDependency）。純粋関数のためDOM/ストレージのモック不要。"
+
+  - id: "todo-form"
+    name: "タスク入力フォーム"
+    description: >-
+      タスクの新規追加・編集のための入力フォーム UI。タイトル・期限・優先度・
+      カテゴリ/タグを入力させ、追加/編集コマンドを生成する（FR-1, FR-4 の入力UI、
+      FR-6, FR-7, FR-8 の設定UI）。空タイトルはUI側でも送信前にブロックする。
+    contract_ref: "features/todo-form.contract.yaml"
+    status_ref: "../03-features/todo-form/status.yaml"
+    tech_stack:
+      language: "TypeScript"
+      framework: ""
+      libraries:
+        - name: "vitest"
+          version: "^4.1.0"
+          license: "MIT"
+          notes: "単体テスト用（devDependency）。"
+        - name: "jsdom"
+          version: "^28.0.0"
+          license: "MIT"
+          notes: "DOM操作を伴うフォームロジックのテスト用（devDependency）。"
+
+  - id: "todo-list-view"
+    name: "タスク一覧表示"
+    description: >-
+      渡された TodoItem 配列（絞り込み・並び替え済み）を一覧表示する（FR-2）。
+      完了チェック操作・削除操作・編集開始操作を受け付け、それぞれコマンド/イベントを
+      発行する（FR-3, FR-5）。期限超過タスクや優先度を視覚的に区別する（FR-6, FR-7）。
+    contract_ref: "features/todo-list-view.contract.yaml"
+    status_ref: "../03-features/todo-list-view/status.yaml"
+    tech_stack:
+      language: "TypeScript"
+      framework: ""
+      libraries:
+        - name: "vitest"
+          version: "^4.1.0"
+          license: "MIT"
+          notes: "単体テスト用（devDependency）。"
+        - name: "jsdom"
+          version: "^28.0.0"
+          license: "MIT"
+          notes: "DOM描画・イベント発火のテスト用（devDependency）。"
+
+  - id: "todo-filter-sort"
+    name: "絞り込み・並び替え"
+    description: >-
+      TodoItem 配列を、完了状態・期限・優先度による絞り込みと並び替え条件に基づいて
+      加工し、表示用の配列を出力する（FR-9, SHOULD）。絞り込み・並び替え条件を選択する
+      UI コントロール自体もこの機能に含む。
+    contract_ref: "features/todo-filter-sort.contract.yaml"
+    status_ref: "../03-features/todo-filter-sort/status.yaml"
+    tech_stack:
+      language: "TypeScript"
+      framework: ""
+      libraries:
+        - name: "vitest"
+          version: "^4.1.0"
+          license: "MIT"
+          notes: "単体テスト用（devDependency）。フィルタ/ソートは純粋関数として実装しDOM非依存にする。"
+
+interfaces:
+  # 起動時ロード: 保存済みデータ -> ドメインロジックの初期状態
+  - producer_feature: "todo-storage"
+    producer_output: "persisted_todo_list"
+    consumer_feature: "todo-crud"
+    consumer_input: "initial_todo_list"
+
+  # ドメインロジックが組み立てた最新の一覧 -> 永続化
+  - producer_feature: "todo-crud"
+    producer_output: "todo_list"
+    consumer_feature: "todo-storage"
+    consumer_input: "todo_list_to_persist"
+
+  # ドメインロジックが組み立てた最新の一覧 -> 絞り込み・並び替え
+  - producer_feature: "todo-crud"
+    producer_output: "todo_list"
+    consumer_feature: "todo-filter-sort"
+    consumer_input: "source_todo_list"
+
+  # 絞り込み・並び替え済みの一覧 -> 一覧表示
+  - producer_feature: "todo-filter-sort"
+    producer_output: "display_todo_list"
+    consumer_feature: "todo-list-view"
+    consumer_input: "display_todo_list"
+
+  # フォームでの追加/編集操作 -> ドメインロジックへのコマンド
+  - producer_feature: "todo-form"
+    producer_output: "todo_command"
+    consumer_feature: "todo-crud"
+    consumer_input: "todo_command"
+
+  # 一覧での完了切替/削除操作 -> ドメインロジックへのコマンド
+  - producer_feature: "todo-list-view"
+    producer_output: "todo_command"
+    consumer_feature: "todo-crud"
+    consumer_input: "todo_command"
+
+  # 一覧での編集開始操作 -> フォームへの編集対象データ受け渡し
+  - producer_feature: "todo-list-view"
+    producer_output: "edit_requested_todo"
+    consumer_feature: "todo-form"
+    consumer_input: "edit_target_todo"
+
+superseded_by: null
+updated_at: "2026-08-19T13:00:00Z"

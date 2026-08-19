@@ -1,0 +1,114 @@
+# schema: harness/schemas/feature-contract.schema.json
+# この機能の入出力の唯一の情報源。担当者はこのファイルと SPEC.md だけを見れば実装できる。
+# CONTRACT_APPROVED 以降は harness/hooks/pre_tool_use_guard.py により書き込みが凍結される。
+feature_id: "todo-list-view"
+feature_name: "タスク一覧表示"
+version: 1
+description: >-
+  渡された TodoItem 配列（絞り込み・並び替え済み）を一覧表示する（FR-2）。
+  完了チェック操作・削除操作・編集開始操作を受け付け、それぞれコマンド/イベントを
+  発行する（FR-3, FR-5）。期限超過の未完了タスクや優先度を視覚的に区別する（FR-6, FR-7）。
+  カテゴリ/タグも表示する（FR-8）。
+
+inputs:
+  - name: "display_todo_list"
+    json_schema:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: ["id", "title", "completed", "priority", "tags", "createdAt", "updatedAt"]
+        properties:
+          id: { type: string, format: uuid }
+          title: { type: string, minLength: 1, maxLength: 200 }
+          completed: { type: boolean }
+          dueDate: { type: ["string", "null"], format: date }
+          priority: { type: string, enum: ["high", "medium", "low"] }
+          tags: { type: array, items: { type: string, minLength: 1 } }
+          createdAt: { type: string, format: date-time }
+          updatedAt: { type: string, format: date-time }
+    required: true
+    description: >-
+      todo-filter-sort が絞り込み・並び替え済みの状態で渡す、表示対象の TodoItem 配列。
+      この機能はこの配列の並び順・内容をそのまま描画すればよく、自ら絞り込み・並び替えは行わない。
+    example: []
+
+outputs:
+  - name: "todo_command"
+    json_schema:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: ["type", "id"]
+          properties:
+            type: { const: "toggle_complete" }
+            id: { type: string, format: uuid }
+        - type: object
+          additionalProperties: false
+          required: ["type", "id"]
+          properties:
+            type: { const: "delete" }
+            id: { type: string, format: uuid }
+    description: >-
+      一覧上でのチェック操作（toggle_complete）または削除操作（delete）から生成される
+      コマンド。todo-crud が消費する。
+    example: { type: "delete", id: "6f2a9a2e-5b8c-4b2b-9f9a-4a2b2c1e0001" }
+
+  - name: "edit_requested_todo"
+    json_schema:
+      type: object
+      additionalProperties: false
+      required: ["id", "title", "completed", "priority", "tags", "createdAt", "updatedAt"]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string, minLength: 1, maxLength: 200 }
+        completed: { type: boolean }
+        dueDate: { type: ["string", "null"], format: date }
+        priority: { type: string, enum: ["high", "medium", "low"] }
+        tags: { type: array, items: { type: string, minLength: 1 } }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    description: >-
+      一覧上で編集操作が選択されたタスクのTodoItem全体。todo-form が消費し、
+      フォームのプリフィルに使う。
+    example:
+      id: "6f2a9a2e-5b8c-4b2b-9f9a-4a2b2c1e0001"
+      title: "牛乳を買う"
+      completed: false
+      dueDate: "2026-08-20"
+      priority: "medium"
+      tags: ["買い物"]
+      createdAt: "2026-08-19T09:00:00Z"
+      updatedAt: "2026-08-19T09:00:00Z"
+
+side_effects: []
+
+error_cases: []
+
+tech_stack:
+  language: "TypeScript"
+  framework: ""
+  libraries:
+    - name: "vitest"
+      version: "^4.1.0"
+      license: "MIT"
+      notes: "単体テスト用（devDependency）。"
+    - name: "jsdom"
+      version: "^28.0.0"
+      license: "MIT"
+      notes: "一覧描画・クリック操作のDOMイベントをテストするため（devDependency）。MITで活発にメンテナンスされている。"
+
+non_functional:
+  usability: "レスポンシブデザインとし、PC・スマートフォンどちらでも操作しやすいこと"
+  visual_distinction: "期限超過かつ未完了のタスク、および優先度（高/中/低）を色やアイコン等で視覚的に区別すること（FR-6, FR-7）"
+  performance: "数百件程度のタスクでも一覧描画がユーザー体感で遅延しないこと"
+
+test_strategy: >-
+  jsdom環境でのvitestによる単体テスト。display_todo_listの内容が正しく描画されること、
+  チェック操作でtoggle_completeコマンドが、削除操作でdeleteコマンドが発行されること、
+  編集操作でedit_requested_todoが正しい内容で発行されること、
+  期限超過タスクが視覚的に区別されるクラス/属性を持つことを検証する。
+
+created_at: "2026-08-19T00:00:00Z"
+approved_at: null
+approved_by: null

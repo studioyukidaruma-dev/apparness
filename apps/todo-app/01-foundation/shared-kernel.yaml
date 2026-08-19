@@ -1,0 +1,65 @@
+# 全機能が依存してよい最小限の共有契約（DDD でいう Shared Kernel）。
+# ここに置くものは変更コストが高いことを認識し、本当に全機能共通のものだけに限定する。
+app_id: "todo-app"
+version: 1
+
+# TodoItem はほぼ全機能（todo-storage / todo-crud / todo-form / todo-list-view /
+# todo-filter-sort）が直接扱うドメインの中核エンティティなので Shared Kernel に置く。
+# それ以外（コマンドの形・フィルタ条件など）は特定の interface にしか登場しないため
+# 各 feature の contract.yaml 側にローカルに定義し、ここには含めない。
+common_types:
+  - name: TodoItem
+    json_schema:
+      type: object
+      additionalProperties: false
+      required: ["id", "title", "completed", "priority", "tags", "createdAt", "updatedAt"]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: "crypto.randomUUID() 等で発行する一意な識別子"
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        completed:
+          type: boolean
+          default: false
+        dueDate:
+          type: ["string", "null"]
+          format: date
+          description: "YYYY-MM-DD。未設定は null（FR-6）"
+        priority:
+          type: string
+          enum: ["high", "medium", "low"]
+          description: "FR-7。未指定時のデフォルトは medium とする"
+        tags:
+          type: array
+          items:
+            type: string
+            minLength: 1
+          default: []
+          description: "自由入力のカテゴリ/タグ。0件以上（FR-8）"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+auth: {}
+# 個人利用・単一ユーザー前提でアカウント登録/ログインを持たない（要件の制約どおり）。
+# 認証方式は存在しないため空とする。
+
+data_store:
+  policy: >-
+    全データはブラウザの localStorage にのみ保存し、サーバー・DB は持たない（FR-10、制約）。
+    localStorage への読み書きは todo-storage 機能に閉じ、他の機能は TodoItem の配列という
+    データ構造としてのみやり取りする（ストレージキー名やシリアライズ形式などの実装詳細は
+    todo-storage の contract.yaml / SPEC.md にのみ記述し、ここには置かない）。
+
+notes: >-
+  本アプリはクライアントサイドのみで完結する SPA であり、機能間の「入出力」はネットワーク越しの
+  API ではなく、同一ブラウザ内でのデータの受け渡し（関数呼び出し・イベント）を指す。
+  architecture.machine.yaml の interfaces[] はこのデータの受け渡しを producer/consumer として
+  宣言したものである。
