@@ -1,0 +1,102 @@
+# schema: harness/schemas/feature-contract.schema.json
+# この機能の入出力の唯一の情報源。担当者はこのファイルと SPEC.md だけを見れば実装できる。
+# CONTRACT_APPROVED 以降は harness/hooks/pre_tool_use_guard.py により書き込みが凍結される。
+feature_id: "todo-form"
+feature_name: "タスク入力フォーム"
+version: 1
+description: >-
+  タスクの新規追加・編集のための入力フォーム UI。タイトル・期限・優先度・
+  カテゴリ/タグを入力させ、追加/編集コマンドを生成する（FR-1, FR-4 の入力UI、
+  FR-6, FR-7, FR-8 の設定UI）。空タイトルはUI側でも送信前にブロックする
+  （送信後の最終防衛は todo-crud 側の EMPTY_TITLE が担う）。
+
+inputs:
+  - name: "edit_target_todo"
+    json_schema:
+      type: ["object", "null"]
+      additionalProperties: false
+      required: ["id", "title", "completed", "priority", "tags", "createdAt", "updatedAt"]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string, minLength: 1, maxLength: 200 }
+        completed: { type: boolean }
+        dueDate: { type: ["string", "null"], format: date }
+        priority: { type: string, enum: ["high", "medium", "low"] }
+        tags: { type: array, items: { type: string, minLength: 1 } }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    required: false
+    description: >-
+      todo-list-view から編集開始が要求されたときに渡される、編集対象のTodoItem。
+      未指定（null）の場合、フォームは新規追加モードとして空の状態で表示される。
+    example: null
+
+outputs:
+  - name: "todo_command"
+    json_schema:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: ["type", "title", "priority", "tags"]
+          properties:
+            type: { const: "add" }
+            title: { type: string, minLength: 1, maxLength: 200 }
+            dueDate: { type: ["string", "null"], format: date }
+            priority: { type: string, enum: ["high", "medium", "low"] }
+            tags: { type: array, items: { type: string, minLength: 1 } }
+        - type: object
+          additionalProperties: false
+          required: ["type", "id", "title", "priority", "tags"]
+          properties:
+            type: { const: "edit" }
+            id: { type: string, format: uuid }
+            title: { type: string, minLength: 1, maxLength: 200 }
+            dueDate: { type: ["string", "null"], format: date }
+            priority: { type: string, enum: ["high", "medium", "low"] }
+            tags: { type: array, items: { type: string, minLength: 1 } }
+    description: >-
+      フォーム送信時に生成される追加(add)または編集(edit)コマンド。edit_target_todo が
+      設定されていた場合は edit、そうでない場合は add を出力する。todo-crud が消費する。
+    example:
+      type: "add"
+      title: "牛乳を買う"
+      dueDate: "2026-08-20"
+      priority: "medium"
+      tags: ["買い物"]
+
+side_effects: []
+
+error_cases:
+  - code: "TITLE_REQUIRED"
+    condition: "送信操作をした時点でタイトル入力欄が空、または空白のみ（UI側での即時フィードバック）"
+    response_shape:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }
+
+tech_stack:
+  language: "TypeScript"
+  framework: ""
+  libraries:
+    - name: "vitest"
+      version: "^4.1.0"
+      license: "MIT"
+      notes: "単体テスト用（devDependency）。"
+    - name: "jsdom"
+      version: "^28.0.0"
+      license: "MIT"
+      notes: "フォーム入力・送信のDOM操作をテストするため（devDependency）。MITで活発にメンテナンスされている。"
+
+non_functional:
+  usability: "レスポンシブデザインとし、PC・スマートフォンどちらでも入力しやすいこと"
+  accessibility: "ラベルと入力欄を関連付け、キーボード操作のみでも入力・送信ができること"
+
+test_strategy: >-
+  jsdom環境でのvitestによる単体テスト。新規追加時にaddコマンドが正しい内容で発行されること、
+  edit_target_todo設定時に値がプリフィルされeditコマンドが発行されること、
+  空タイトル送信時にTITLE_REQUIREDとなりtodo_commandが発行されないことを検証する。
+
+created_at: "2026-08-19T00:00:00Z"
+approved_at: null
+approved_by: null
