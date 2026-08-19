@@ -1,6 +1,6 @@
 feature_id: todo-form
 app_id: todo-app
-state: TESTED
+state: INTEGRATED
 state_history:
 - state: NOT_STARTED
   at: '2026-08-19T12:57:32Z'
@@ -22,11 +22,19 @@ state_history:
   at: '2026-08-19T13:35:00Z'
   by: builder
   note: vitest(jsdom) 30件全て成功、tsc --noEmitも成功
+- state: INTEGRATED
+  at: '2026-08-19T22:20:00Z'
+  by: integrator
+  note: >-
+    feature/todo-app/todo-form を main へ merge --no-ff。
+    04-integration/assembly/src/main.ts で createTodoForm を
+    todo-crud（onSubmit）・todo-list-view（editTargetTodo）と結線し、
+    追加/編集フォームの動作をブラウザ上で確認。
 assignee: null
 branch: feature/todo-app/todo-form
 worktree_path: apps/todo-app/.worktrees/todo-form
 contract_version: null
 blockers: []
 superseded_by: null
-last_updated_at: '2026-08-19T13:35:00Z'
-updated_by: builder
+last_updated_at: '2026-08-19T22:20:00Z'
+updated_by: integrator

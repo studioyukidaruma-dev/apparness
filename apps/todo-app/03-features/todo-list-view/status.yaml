@@ -1,6 +1,6 @@
 feature_id: todo-list-view
 app_id: todo-app
-state: TESTED
+state: INTEGRATED
 state_history:
 - state: NOT_STARTED
   at: '2026-08-19T12:57:32Z'
@@ -22,11 +22,19 @@ state_history:
   at: '2026-08-19T13:25:00Z'
   by: builder
   note: vitest run green (15 tests), tsc --noEmit clean
+- state: INTEGRATED
+  at: '2026-08-19T22:20:00Z'
+  by: integrator
+  note: >-
+    feature/todo-app/todo-list-view を main へ merge --no-ff。
+    04-integration/assembly/src/main.ts で renderTodoListView を
+    todo-filter-sort（display_todo_list）・todo-crud（onCommand）・
+    todo-form（onEditRequested）と結線し、一覧表示・操作をブラウザ上で確認。
 assignee: null
 branch: feature/todo-app/todo-list-view
 worktree_path: apps/todo-app/.worktrees/todo-list-view
 contract_version: 1
 blockers: []
 superseded_by: null
-last_updated_at: '2026-08-19T13:25:00Z'
-updated_by: builder
+last_updated_at: '2026-08-19T22:20:00Z'
+updated_by: integrator
