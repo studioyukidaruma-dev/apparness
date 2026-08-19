@@ -1,6 +1,6 @@
 feature_id: todo-storage
 app_id: todo-app
-state: CONTRACT_APPROVED
+state: TESTED
 state_history:
 - state: NOT_STARTED
   at: '2026-08-19T12:57:29Z'
@@ -10,11 +10,23 @@ state_history:
   at: '2026-08-19T12:57:29Z'
   by: new-feature-worktree
   note: worktree scaffold created
+- state: IN_PROGRESS
+  at: '2026-08-19T13:05:00Z'
+  by: feature-builder
+  note: implementation started
+- state: IMPLEMENTED
+  at: '2026-08-19T13:15:00Z'
+  by: feature-builder
+  note: loadTodoList/saveTodoList implemented per contract.yaml
+- state: TESTED
+  at: '2026-08-19T13:20:00Z'
+  by: feature-builder
+  note: 'vitest (jsdom) 13/13 passed; tsc --noEmit passed'
 assignee: null
 branch: feature/todo-app/todo-storage
 worktree_path: apps/todo-app/.worktrees/todo-storage
-contract_version: null
+contract_version: 1
 blockers: []
 superseded_by: null
-last_updated_at: '2026-08-19T12:57:29Z'
-updated_by: new-feature-worktree
+last_updated_at: '2026-08-19T13:20:00Z'
+updated_by: feature-builder
