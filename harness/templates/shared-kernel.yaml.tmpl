@@ -1,0 +1,17 @@
+# 全機能が依存してよい最小限の共有契約（DDD でいう Shared Kernel）。
+# ここに置くものは変更コストが高いことを認識し、本当に全機能共通のものだけに限定する。
+app_id: "{{APP_ID}}"
+version: 1
+# 例:
+# common_types:
+#   - name: UserId
+#     json_schema: { "type": "string", "format": "uuid" }
+# auth:
+#   scheme: ""
+#   token_format: ""
+# data_store:
+#   policy: ""
+common_types: []
+auth: {}
+data_store: {}
+notes: ""
