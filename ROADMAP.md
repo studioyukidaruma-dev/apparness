@@ -104,6 +104,22 @@ git remote add harness-origin git@github.com:studioyukidaruma-dev/apparness-harn
     ブランチではRule B自体を判定しないように修正（`DEFAULT_BRANCHES`）。`feature/**`等の
     非デフォルトブランチでは引き続き検知することをテストで確認済み。
     ブランチ: `harness/fix-ci-branch-attribution`。
+- [x] **Bash 経由の間接書き込み検知が、複数行コマンドで先頭行以外の `cp`/`mv`/`tee`/`sed -i` を
+  見落とす検知漏れを修正**。他タスクの動作確認中、`mkdir -p apps/.../src` に続けて2行目で
+  `cp file1 file2 apps/.../src/` を実行するとRule 2（担当外ガード）をすり抜けることを実地で
+  発見した。原因は `shlex` が改行を単なる空白として読み捨てるため、改行だけで区切られた複数行
+  スクリプト（Claude Code の Bash ツールが渡す典型的な形）が1つの巨大なセグメントに融合し、
+  `_extract_write_targets_from_segment` がセグメント先頭トークンだけを `cp`/`mv`/`tee`/`sed -i`
+  と比較する仕組みが先頭行以外のコマンドを見落としていたこと。トークン化前に、クォート・
+  行継続（末尾 `\`）・ヒアドキュメント本体を考慮しながら「コマンドの区切りとして扱ってよい
+  改行」だけを `;` に正規化する処理（`path_utils._classify_bash_lines`/`_normalize_bash_newlines`）
+  を追加して根本的に修正した。ヒアドキュメント本体・終端子直前の改行は区切りに変換しないため、
+  本体中に `cp ...` のような文字列が含まれていても新たな誤検知（false positive）は生まれない
+  （実地で回帰確認済み）。真陽性10件（複数行cp/mv/tee/sed/redirect、`&&`と改行の混在、行継続、
+  ヒアドキュメント後のコマンド、空白入りクォートパス）・真陰性4件（ヒアドキュメント本体内の
+  偽装文字列、here-string、ガード対象外パス、複数行にまたがる二重引用符内の偽装文字列）で
+  検証し、既存の単一行シナリオ（旧 `harness/fix-bash-guard-tokenizer` の回帰確認）にも
+  影響がないことを確認した。ブランチ: `harness/fix-bash-guard-newline-segments`。
 
 - [x] **ライブラリの脆弱性スキャンの自動化**。`npm audit`/`pip-audit`/OSV等を候補として検討し、
   「どんなアプリでも作れる」という配布ハーネスの前提（アプリのパッケージマネージャは設計フェーズ
