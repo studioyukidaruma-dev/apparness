@@ -49,7 +49,17 @@ vitest で単体テストする（境界値: 0, 負数, 上限超え, 小数, Na
 加えて `storage.js`（フェイク `localStorage` を使った読み書き・エラー系）、
 `settings.js`（検証と永続化の結合、保存失敗時に例外を投げないこと）もテスト対象にした。
 `localStorage` への実際の読み書き・UIの見た目は `src/index.html` をブラウザで開いて手動確認する
-（フォーム入力 → 保存 → リロード後も値が保持されることを確認）。
+（フォーム入力 → 保存 → リロード後も値が保持されることを確認）。`file://` で直接開くと
+ブラウザによっては ES Modules の CORS 制限で `main.js` が読み込めないことがあるため、
+`src/` を作業ディレクトリにして簡易HTTPサーバー（例: `python3 -m http.server`）経由で
+開くことを推奨する。
+
+`code-review` skill をこの worktree で2回実行したが、いずれもフォーク先のバックグラウンド
+プロセスがこの worktree の作業ディレクトリを引き継いでおらず、1回目は無関係な harness の
+過去コミット差分を、2回目は空の差分（`main` ブランチ扱い）を対象にレビューしてしまい、
+本機能の実装（`src/`配下）そのものはレビューされなかった。そのため実装者自身が
+line-by-line diff scan・removed-behavior・cross-file・reuse/simplification/efficiency/
+altitude・CLAUDE.md conventions の観点で手動セルフレビューを行い、指摘なしと判断した。
 
 ## この機能のスコープ外
 
