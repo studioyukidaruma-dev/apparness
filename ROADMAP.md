@@ -49,6 +49,15 @@ git remote add harness-origin git@github.com:studioyukidaruma-dev/apparness-harn
 - 要件定義書の履歴管理（`00-requirements/history/`）と上位文書優先の原則
 - 実地テスト: `apps/todo-app` で要件定義〜組み上げまでの一気通貫を確認済み
 
+## v1 で完了した項目
+
+- [x] **各フェーズでのコミット実行を Hook で強制する仕組み**。`harness/hooks/stop_commit_guard.py` を
+  `Stop`/`SubagentStop` イベントに登録し、`status.yaml`/`requirements.machine.yaml`/
+  `architecture.machine.yaml`（新規追加ファイルも含む）に未コミットの変更が残ったまま応答を
+  終えようとした場合に停止をブロックするようにした（`CONVENTIONS.md` 7節 Rule 8、
+  `HARNESS_GUIDE.md` 5節）。`Stop`/`SubagentStop` 用に `stop_hook_active` を見て無限ループを回避。
+  ブランチ: `harness/stop-commit-guard`。
+
 ## v1 で着手予定の項目
 
 `HARNESS_GUIDE.md` 11節「既知の制約」に対応する拡張候補。優先度は未定、着手時に相談して決める。
@@ -57,7 +66,6 @@ git remote add harness-origin git@github.com:studioyukidaruma-dev/apparness-harn
 - [ ] Bash 経由の間接的な書き込み（`sed -i` 等）を警告だけでなく実際にブロックする（誤検知リスクとのトレードオフを検討）
 - [ ] `status.yaml` の状態遷移の妥当性チェック（`NOT_STARTED` からいきなり `INTEGRATED` にする、等を防ぐ）
 - [ ] ライブラリの脆弱性スキャンの自動化（`npm audit`/`pip-audit`/OSV等をHookやCIに統合）
-- [ ] 各フェーズでのコミット実行を Hook で強制する仕組み（現状はプロンプト依存で、実地テストで一部フェーズのコミット漏れが実際に発生した）
 - [ ] `find-skills` を用いた専門Skillの自動発見・`required_skills[]` への提案（現状は手動でSkill名を把握してからでないと使えない）
 
 ## 決めていないこと・要相談

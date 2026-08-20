@@ -49,6 +49,48 @@ def get_current_branch(cwd: str) -> str | None:
     return _run_git(["branch", "--show-current"], cwd=cwd)
 
 
+def get_status_porcelain(cwd: str) -> str | None:
+    """`git status --porcelain` の生出力を返す。各行先頭の状態コード（例: ` M`）は
+    先頭空白に意味があるため、`_run_git` の `strip()` は使わず改行のみを除去する。
+    """
+    try:
+        out = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=all"],
+            capture_output=True, text=True, cwd=cwd, timeout=3,
+        )
+        if out.returncode != 0:
+            return None
+        return out.stdout.rstrip("\n")
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def find_main_repo_root(worktree_toplevel: str) -> str:
+    """git worktree のメインリポジトリのルートを返す（.git ファイルの gitdir 記載から辿る）。
+    通常の（worktree でない）チェックアウトなら worktree_toplevel をそのまま返す。
+    """
+    import os
+
+    git_path = os.path.join(worktree_toplevel, ".git")
+    if os.path.isdir(git_path):
+        return worktree_toplevel
+    try:
+        with open(git_path, "r", encoding="utf-8") as f:
+            content = f.read().strip()
+    except OSError:
+        return worktree_toplevel
+    m = re.match(r"gitdir:\s*(.+)", content)
+    if not m:
+        return worktree_toplevel
+    gitdir = m.group(1)
+    # 例: <root>/.git/worktrees/<name> -> <root>
+    marker = os.sep + ".git" + os.sep + "worktrees" + os.sep
+    idx = gitdir.find(marker)
+    if idx == -1:
+        return worktree_toplevel
+    return gitdir[:idx]
+
+
 def extract_structured_edit_paths(tool_name: str, tool_input: dict) -> list[str]:
     """Edit/Write/MultiEdit/NotebookEdit の対象絶対パスを返す。"""
     if tool_name == "NotebookEdit":

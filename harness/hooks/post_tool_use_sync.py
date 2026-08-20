@@ -34,7 +34,7 @@ def main() -> int:
         app_id = m.group(1)
         # worktree はリポジトリのメインルート配下の apps/<app_id>/ を編集対象と共有しているが、
         # render_progress.py はメインリポジトリの harness/scripts を使うため、まずメインルートを探す。
-        main_root = _find_main_repo_root(toplevel)
+        main_root = path_utils.find_main_repo_root(toplevel)
         script = os.path.join(main_root, "harness", "scripts", "render_progress.py")
         if not os.path.exists(script):
             print(f"警告: {script} が見つかりません。進捗の自動再生成をスキップします", file=sys.stderr)
@@ -49,30 +49,6 @@ def main() -> int:
             print(f"警告: render_progress.py --app {app_id} が失敗しました:\n{result.stderr}", file=sys.stderr)
 
     return 0
-
-
-def _find_main_repo_root(worktree_toplevel: str) -> str:
-    """git worktree のメインリポジトリのルートを返す（.git ファイルの gitdir 記載から辿る）。
-    通常の（worktree でない）チェックアウトなら worktree_toplevel をそのまま返す。
-    """
-    git_path = os.path.join(worktree_toplevel, ".git")
-    if os.path.isdir(git_path):
-        return worktree_toplevel
-    try:
-        with open(git_path, "r", encoding="utf-8") as f:
-            content = f.read().strip()
-    except OSError:
-        return worktree_toplevel
-    m = re.match(r"gitdir:\s*(.+)", content)
-    if not m:
-        return worktree_toplevel
-    gitdir = m.group(1)
-    # 例: <root>/.git/worktrees/<name> -> <root>
-    marker = os.sep + ".git" + os.sep + "worktrees" + os.sep
-    idx = gitdir.find(marker)
-    if idx == -1:
-        return worktree_toplevel
-    return gitdir[:idx]
 
 
 if __name__ == "__main__":

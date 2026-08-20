@@ -96,7 +96,7 @@ NOT_STARTED → CONTRACT_DRAFTED → CONTRACT_APPROVED → IN_PROGRESS → IMPLE
 全機能が共通で依存してよいものは `01-foundation/shared-kernel.yaml`
 （DDD でいう Shared Kernel）に限定し、機能ごとの `contract.yaml` から参照します。
 
-## 7. Hooks が強制する 7 ルール（詳細は `harness/hooks/pre_tool_use_guard.py` 参照）
+## 7. Hooks が強制する 8 ルール（詳細は `harness/hooks/pre_tool_use_guard.py`・`stop_commit_guard.py` 参照）
 
 1. **ハーネス非侵襲性**: `harness/**` と `.claude/**`（リポジトリルート直下）への書き込みは、
    現在のブランチが `harness/` プレフィックスでない限り拒否する。ただし `.claude/settings.local.json`
@@ -123,6 +123,13 @@ NOT_STARTED → CONTRACT_DRAFTED → CONTRACT_APPROVED → IN_PROGRESS → IMPLE
 7. **要件↔設計の整合性ゲート**: `architecture.machine.yaml` を `status: APPROVED` にする書き込みは、
    その `based_on_requirements_version` が `requirements.machine.yaml` の現在の `version` と
    一致しない限り拒否する（11節）。要件が変更されたのに設計が追従していない状態で承認させない。
+8. **フェーズ節目のコミット強制**（`Stop`/`SubagentStop` フックで実行、`PreToolUse` ではない）:
+   `status.yaml` / `requirements.machine.yaml` / `architecture.machine.yaml` のいずれかに
+   未コミットの変更（`git status --porcelain --untracked-files=all` で検出。新規追加もこの
+   コミット漏れの対象に含める）が残ったまま応答を終えようとした場合、停止を拒否する。
+   各 subagent のプロンプトは「状態を進めるたびに `git add -A && git commit` する」と指示しているが、
+   実地テストでコミット漏れが実際に発生したため、決定論的に強制する。無限ループ回避のため、
+   Claude Code が渡す `stop_hook_active` が真の場合は判定をスキップして通す。
 
 v0 では Edit/Write/MultiEdit/NotebookEdit という構造化ツール呼び出しのみを確実にブロックします。
 Bash 経由の間接的な書き込み（`sed -i` 等）は検知しても警告のみで、ブロックはしません

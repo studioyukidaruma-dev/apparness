@@ -12,7 +12,7 @@
 2. [全体像（ディレクトリマップ）](#2-全体像ディレクトリマップ)
 3. [ワークフロー全体図](#3-ワークフロー全体図)
 4. [フェーズ詳細](#4-フェーズ詳細)
-5. [Hooks が強制する7つのルール（決定論レイヤー）](#5-hooks-が強制する7つのルール決定論レイヤー)
+5. [Hooks が強制する8つのルール（決定論レイヤー）](#5-hooks-が強制する8つのルール決定論レイヤー)
 6. [コンテキスト消費マップ](#6-コンテキスト消費マップ)
 7. [決定論 vs AI判断 対照表](#7-決定論-vs-ai判断-対照表)
 8. [ブランチ・worktree 運用とその制限](#8-ブランチworktree-運用とその制限)
@@ -209,9 +209,9 @@ flowchart TD
 
 ---
 
-## 5. Hooks が強制する7つのルール（決定論レイヤー）
+## 5. Hooks が強制する8つのルール（決定論レイヤー）
 
-すべて `harness/hooks/pre_tool_use_guard.py`（PreToolUse）と `post_tool_use_sync.py`（PostToolUse）で実装。**依存ゼロの標準ライブラリのみ**で動作し、ツール呼び出しのたびに毎回起動されます。
+`harness/hooks/pre_tool_use_guard.py`（PreToolUse）・`post_tool_use_sync.py`（PostToolUse）・`stop_commit_guard.py`（Stop/SubagentStop）で実装。**依存ゼロの標準ライブラリのみ**で動作し、ツール呼び出し・応答終了のたびに毎回起動されます。
 
 ```mermaid
 sequenceDiagram
@@ -237,6 +237,14 @@ sequenceDiagram
         Hook->>FS: render_progress.py 実行
         FS-->>Hook: PROGRESS.md/STATE.machine.yaml 再生成
     end
+    Agent->>Agent: 応答終了(Stop/SubagentStop)
+    Agent->>Hook: stop_commit_guard.py
+    Hook->>FS: git status --porcelain --untracked-files=all
+    alt フェーズ節目ファイルが未コミット
+        Hook-->>Agent: exit 2 + stderr理由（停止をブロック）
+    else クリーン
+        Hook-->>Agent: exit 0（停止を許可）
+    end
 ```
 
 | # | ルール名 | 何を見るか | ブロック条件 |
@@ -248,8 +256,9 @@ sequenceDiagram
 | 5 | 必須Skill充足ゲート | `03-features/<id>/src/**` | `shared-kernel.yaml` の `required_skills[]` の `plugin_ref` が `enabledPlugins` に無い |
 | 6 | 上位文書ガード | feature用worktreeからの `00-requirements/`・`01-foundation/`・`02-design/` | 常にブロック（メインworktreeからは対象外） |
 | 7 | 要件↔設計整合性 | `architecture.machine.yaml` を `APPROVED` にする書き込み | `based_on_requirements_version` ≠ `requirements.machine.yaml` の現在の `version` |
+| 8 | フェーズ節目のコミット強制 | `status.yaml`/`requirements.machine.yaml`/`architecture.machine.yaml`（Stop/SubagentStop） | いずれかが `git status --porcelain --untracked-files=all` で未コミット |
 
-v0では **Edit/Write/MultiEdit/NotebookEdit のみ確実にブロック**します。Bash 経由の間接書き込み（`sed -i` 等）は検知しても警告のみで、実行は止めません（誤検知でBash全体を止める体験悪化を避けるため）。
+v0では **Edit/Write/MultiEdit/NotebookEdit のみ確実にブロック**します。Bash 経由の間接書き込み（`sed -i` 等）は検知しても警告のみで、実行は止めません（誤検知でBash全体を止める体験悪化を避けるため）。Rule 8 は例外的に `Stop`/`SubagentStop` イベントで動作し、ツール呼び出しではなく応答終了そのものをブロックします。
 
 ---
 
@@ -329,7 +338,8 @@ graph LR
 | `security-review`/`code-review` の実行そのもの | ❌ | ⚠️ プロンプト上の必須手順（実行を忘れる/スキップする余地は理論上ある） |
 | 実装の正しさ・テストの十分性 | ❌ | ⚠️ feature-builderの判断 |
 | 結合テストのシナリオ網羅性 | ❌ | ⚠️ integratorの判断 |
-| 各フェーズでのコミット実行 | ❌ | ⚠️ プロンプトの指示に依存（Hookは強制しない） |
+| フェーズ節目（status.yaml等）のコミット実行 | ✅ Rule 8（Stop/SubagentStop） | — |
+| コミット内容の妥当性（メッセージ・粒度） | ❌ | ⚠️ プロンプトの指示に依存（コミットが行われること自体はRule 8が強制） |
 | Bash経由の間接的な書き込み | ❌（警告のみ） | ⚠️ 検知はするが遮断しない（v1で強化予定） |
 
 **読み方**: ✅ は「Claudeが指示に従わなくても、システムが機械的に阻止/実行する」層。⚠️ は「プロンプトに明記されているが、最終的にはAIの遵守に依存する」層です。⚠️ の項目は `PROGRESS.md` の `autonomy_mode` 表示や、人間によるレビューで補完することを前提としています。
@@ -423,6 +433,9 @@ graph TD
 - `status.yaml` の状態遷移（例: `NOT_STARTED` → いきなり `INTEGRATED`）の妥当性チェックは未実装
 - CI（GitHub Actions等）との連携は範囲外。Claude Code Hooksのみで完結させている
 - ライブラリの脆弱性スキャンは自動化されておらず、`solution-architect` の調査と `security-review` skill に依存
-- 各フェーズでのコミット実行はAIの遵守に依存し、Hookによる強制はない（過去の実地テストで一部フェーズのコミット漏れが実際に発生した）
 
 これらは実際にアプリを1本作ってみてから、必要に応じて拡張する方針です。
+
+**v1 で対応済み**: 各フェーズでのコミット実行（`status.yaml`/`requirements.machine.yaml`/
+`architecture.machine.yaml` の未コミット変更を残したまま応答を終えることを `Stop`/`SubagentStop`
+フック（`stop_commit_guard.py`、5節 Rule 8）でブロックする仕組み）。
