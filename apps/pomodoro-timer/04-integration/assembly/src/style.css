@@ -27,6 +27,7 @@
   --space-3: 16px;
   --space-4: 24px;
   --space-5: 32px;
+  --space-6: 48px;
   --font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Kaku Gothic ProN", sans-serif;
   color-scheme: dark;
 }
@@ -48,7 +49,7 @@ body {
 .app {
   max-width: 560px;
   margin: 0 auto;
-  padding: var(--space-5) var(--space-3) var(--space-6, 48px);
+  padding: var(--space-5) var(--space-3) var(--space-6);
 }
 
 .app-header h1 {

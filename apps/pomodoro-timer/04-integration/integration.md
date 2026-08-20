@@ -63,7 +63,11 @@ UIであり、`harness/quality/design-baseline.md` に従い、既存の `settin
   HIGH/MEDIUM相当の指摘なし（innerHTMLの生埋め込み・秘密情報のハードコード・
   入力検証のバイパス等は確認されなかった。設定値・イベントはいずれも producer 側/consumer 側の
   既存の検証ロジックを経由してから結線コードに渡っている）。
-- `code-review` skill: 実行し、指摘があれば対応した（詳細は本ファイルの更新履歴・コミットログ参照）。
+- `code-review` skill: `ca96f9b`（結線コミット）を対象にシングルパスで実行（Agent tool不使用）。
+  指摘1件（`src/style.css` の `.app` の padding が未定義のCSSカスタムプロパティ `--space-6` を
+  フォールバック値 `48px` 込みで参照しており、design-baselineの余白トークンとして`:root`に
+  実体が無かった）。`:root` に `--space-6: 48px` を追加し、フォールバック無しの参照に修正して対応。
+  対応後、結合テスト6件が全て再度通過することを確認。
 
 ## 既知の課題
 
