@@ -177,13 +177,7 @@
 
   <script type="module">
     import { mountTimerUI } from "./src/main.js";
-    const sessionTypeEl = document.getElementById("timer-session-type");
-    const { engine } = mountTimerUI(document);
-    // data-session属性をセッション種別ごとの配色切替に使う(色だけに頼らずラベル文字でも区別する)
-    const observer = () => {
-      sessionTypeEl.dataset.session = engine.getDisplayState().session_type;
-    };
-    setInterval(observer, 250);
+    mountTimerUI(document);
   </script>
 </body>
 </html>

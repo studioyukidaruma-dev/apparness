@@ -168,6 +168,27 @@ describe("TimerEngine command handling", () => {
     expect(() => engine.handleCommand("fast-forward")).not.toThrow();
     expect(engine.handleCommand("fast-forward").accepted).toBe(false);
   });
+
+  it("does not lose a work_session_completed event when reset is pressed after the session already elapsed but before any tick() ran", () => {
+    // バックグラウンドタブでのtimerスロットリング等により、実時間ではセッションが
+    // 完了しているのに tick() がまだ一度も呼ばれていない状態を再現する。
+    const completedEvents = [];
+    engine.on("workSessionCompleted", (payload) => completedEvents.push(payload));
+
+    engine.handleCommand("start");
+    clock.advance(1500 * 1000); // WORK 25分ちょうど経過（tick()はまだ呼んでいない）
+    engine.handleCommand("reset"); // tick()を挟まずに直接reset
+
+    expect(completedEvents).toHaveLength(1);
+    expect(completedEvents[0].session_type).toBe("WORK");
+    // 完了したWORKの次はSHORT_BREAKへ進んでおり、そのセッションがリセットされている
+    expect(engine.getDisplayState()).toEqual({
+      session_type: "SHORT_BREAK",
+      remaining_seconds: 300,
+      is_running: false,
+      completed_work_sessions_in_cycle: 1,
+    });
+  });
 });
 
 describe("TimerEngine countdown precision", () => {

@@ -85,7 +85,11 @@ export function mountTimerUI(root = document, initialSettings = DEFAULT_TIMER_SE
 
   function render() {
     const state = engine.tick();
-    if (sessionTypeEl) sessionTypeEl.textContent = SESSION_LABELS[state.session_type];
+    if (sessionTypeEl) {
+      sessionTypeEl.textContent = SESSION_LABELS[state.session_type];
+      // 色だけに頼らずラベル文字でも区別できるようにしつつ、配色切替用に種別をdata属性へ反映する
+      sessionTypeEl.dataset.session = state.session_type;
+    }
     if (remainingEl) remainingEl.textContent = formatMMSS(state.remaining_seconds);
     if (cycleEl) {
       cycleEl.textContent = `完了した作業セッション: ${state.completed_work_sessions_in_cycle}`;

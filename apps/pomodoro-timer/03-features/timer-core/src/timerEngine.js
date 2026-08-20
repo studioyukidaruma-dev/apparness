@@ -152,10 +152,11 @@ export class TimerEngine {
         return { accepted: true };
       }
       case "pause": {
-        // 直前に完了済みのセッションが未反映のまま残っていないか先に清算する
+        // 直前に完了済みのセッションが未反映のまま残っていないか先に清算する。
+        // _refresh() はその過程で remainingSeconds をこの時点の正しい値に更新済みなので
+        // 再計算はしない。
         this._refresh(nowMs);
         if (this._status !== "running") return { accepted: false };
-        this.remainingSeconds = this._remainingFromEndAt(nowMs);
         this._status = "paused";
         this._sessionEndAt = null;
         return { accepted: true };
@@ -167,6 +168,11 @@ export class TimerEngine {
         return { accepted: true };
       }
       case "reset": {
+        // pauseと同様、実時間ではすでに完了しているのにまだtick()で清算されていない
+        // セッションがあれば先に処理する。これをしないと、実際には完了した作業セッションの
+        // work_session_completed が発火されないまま失われる（バックグラウンドタブでtimerが
+        // スロットリングされ、完了直後にresetが押された場合などに起こりうる）。
+        this._refresh(nowMs);
         this._status = "idle";
         this._sessionEndAt = null;
         this._loadActiveSettingsForNewSession();
