@@ -10,20 +10,51 @@
 
 ## この機能が何をするか
 
-(contract.yaml の description を人間向けに詳しく説明する)
+作業時間・短い休憩時間・長い休憩時間・長い休憩までの作業セッション数・通知音ON/OFFを
+ユーザーが編集できる設定フォーム。入力を検証したうえで `localStorage`
+（キー: `pomodoro-timer:settings:v1`）に保存し、現在の設定値（`timer_settings`）を
+他機能（timer-core）へ提供する。timer-core がタイマーをどう進行させるか、
+session-log がログをどう保存するかは一切知らないし関知しない。
 
 ## 入力・出力
 
-正式な定義は `contract.yaml`。ここでは使用例や補足説明を書く。
+正式な定義は `contract.yaml`。
+
+- 入力 `settings_form_input`: フォームから送られる生の値（5項目）。
+- 出力 `timer_settings`: 検証・保存済みの値。timer-core が読み込む前提の形。
+- 初回アクセス（`localStorage` が空）の場合は既定値
+  （25 / 5 / 15 / 4 / true）を返す。
 
 ## 実装方針
 
-(必要なら。契約を満たせば実装の自由度は担当者にある)
+- `src/validate.js`: 入力検証を行う純粋関数 `validateSettingsInput()`。DOM・localStorage
+  に一切依存しない。境界値（0・負数・上限超え・小数・NaN・文字列・boolean以外）を
+  すべて `INVALID_INPUT` として拒否する。
+- `src/storage.js`: `localStorage` の読み書きのみを担当。書き込み失敗
+  （プライベートブラウジング等）を握りつぶさず `STORAGE_UNAVAILABLE` として返す。
+  読み込み時は「キーが無い／JSONが壊れている／値が検証を通らない」の
+  いずれの場合も例外を投げず既定値にフォールバックする
+  （shared-kernel.yaml の data_store.policy に従う）。
+- `src/settings.js`: 他機能から見た唯一の公開 API。
+  `getSettings()` / `saveSettings(rawInput)` の2関数のみを export する。
+  timer-core はこのモジュールの `getSettings()` が返す形（`timer_settings` の
+  JSON Schema）だけを信頼すればよい。
+- `src/ui.js` + `src/main.js` + `src/index.html` + `src/style.css`:
+  フォームのDOM結線と最低限のスタイル。`settings.js` の公開APIのみに依存する。
 
 ## テスト方針
 
-(contract.yaml の test_strategy を具体化する)
+`contract.yaml` の `test_strategy` に従い、`validateSettingsInput()` を純粋関数として
+vitest で単体テストする（境界値: 0, 負数, 上限超え, 小数, NaN, 文字列型, boolean以外等）。
+加えて `storage.js`（フェイク `localStorage` を使った読み書き・エラー系）、
+`settings.js`（検証と永続化の結合、保存失敗時に例外を投げないこと）もテスト対象にした。
+`localStorage` への実際の読み書き・UIの見た目は `src/index.html` をブラウザで開いて手動確認する
+（フォーム入力 → 保存 → リロード後も値が保持されることを確認）。
 
 ## この機能のスコープ外
 
-(隣接機能との境界を明確にする。誤って他機能の責務を実装しないため)
+- タイマーのカウントダウン進行・開始/一時停止/リセット操作（timer-core の責務）。
+- セッション完了記録の保存・一覧表示（session-log の責務）。
+- timer-core・session-log が `timer_settings` をどう使うか、どのタイミングで
+  読み込むかはこの機能の関知するところではない（`architecture.machine.yaml` の
+  `interfaces[]` に委ねる）。
