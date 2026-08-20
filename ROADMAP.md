@@ -96,6 +96,14 @@ git remote add harness-origin git@github.com:studioyukidaruma-dev/apparness-harn
   アプリ固有のテスト実行をCIに載せたくなったら、「各機能に統一エントリポイント
   （例: `run_tests.sh`）を置く」という新しい規約をCONVENTIONS.mdに追加すれば、CI側は
   スタック非依存のまま対応できる（未着手）。
+  - **実地で発見・修正した不具合**: `main` へ初めて push した際、それまでの正当な作業
+    （`harness/<topic>` で作業してローカルで `main` へ fast-forward マージ、を4回繰り返した分）が
+    すべて「`main` ブランチで harness/ を直接変更した」という Rule B（Rule 1相当）の誤検知で
+    CIが落ちた。fast-forward マージは履歴が線形になるため、push 時点では「コミットが元々どの
+    ブランチで作られたか」がgit上から判別できない、という構造的な限界だった。`main`/`master`
+    ブランチではRule B自体を判定しないように修正（`DEFAULT_BRANCHES`）。`feature/**`等の
+    非デフォルトブランチでは引き続き検知することをテストで確認済み。
+    ブランチ: `harness/fix-ci-branch-attribution`。
 
 ## v1 で着手予定の項目
 

@@ -24,6 +24,13 @@ Rule 5（必須Skillの充足）は CI に実行環境の Skill 有効化状態�
 Rule 8（フェーズ節目のコミット強制）は push された時点で既にコミット済みであるため、
 それぞれ対象外（再検証しても意味がない）。
 
+B は `main`/`master` ブランチでは判定しない（DEFAULT_BRANCHES）。このハーネスは
+`harness/<topic>` で作業して main へ fast-forward マージする運用が前提であり、fast-forward
+マージは履歴が線形になるため、push 時点で「このコミットが元々どのブランチで作られたか」は
+git 上から判別できない（正当な ff マージと、main への直接コミットが diff 上で区別できない）。
+実地で main への push 時にこの誤検知が発生したため、この対応を入れた。B は `feature/**` 等の
+非デフォルトブランチからの push・PR でのみ意味を持つ。
+
 使い方:
     python3 harness/scripts/ci_check.py [--base <commit-ish>] [--head <commit-ish>] [--branch <name>]
 
@@ -44,6 +51,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / "hooks" / "lib"))
 import path_utils  # noqa: E402
 
 EMPTY_TREE_SHA = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+DEFAULT_BRANCHES = {"main", "master"}
 
 SCHEMA_MAP = [
     ("apps/*/AUTONOMY.yaml", "autonomy.schema.json"),
@@ -136,7 +144,14 @@ def check_schema(root: pathlib.Path) -> list[str]:
 
 
 def check_harness_immutability(branch: str | None, changed: list[tuple[str, str]]) -> list[str]:
-    if branch and branch.startswith("harness/"):
+    if not branch or branch.startswith("harness/") or branch in DEFAULT_BRANCHES:
+        # DEFAULT_BRANCHES を除外する理由: このハーネスは `harness/<topic>` ブランチで作業して
+        # from main へ fast-forward マージする運用を前提にしている（8節）。fast-forward マージは
+        # 履歴が線形になるため、push 時点で「このコミットが元々どのブランチで作られたか」という
+        # 情報は git 上に残らない（main 上の押し込みも、正当な harness/<topic> の ff マージも、
+        # diff 上は区別がつかない）。そのためこのチェックは push 時点の branch が実際に
+        # `feature/**` 等の非デフォルトブランチである場合にのみ意味を持つ（feature-builder が
+        # ローカル Hook をすり抜けて harness/ を直接触った場合はここで検知できる）。
         return []
     violations = []
     for _status, path in changed:

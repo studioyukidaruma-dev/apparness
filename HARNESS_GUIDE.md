@@ -529,6 +529,15 @@ Rule 5（必須Skillの充足）は CI 実行環境に Skill 有効化状態と�
 Rule 8（フェーズ節目のコミット強制）は push された時点で既に全てコミット済みのため、
 それぞれ再検証の対象外（再検証しても意味がない）。
 
+**B は `main`/`master` ブランチでは判定しない。** このハーネスは `harness/<topic>` で作業して
+`main` へ **fast-forwardマージ**する運用が前提（8節）。fast-forward マージは履歴が線形になるため、
+push 時点で「このコミットが元々どのブランチで作られたか」は git 上から判別できない
+（正当な `harness/<topic>` の ff マージも、`main` への直接コミットも、diff 上では区別がつかない）。
+実際、このワークフローを初めて `main` へ push した際に、それまでの正当な作業がすべて
+「`main` で harness/ を直接変更した」と誤検知される問題が起きた。B は `feature/**` 等の
+非デフォルトブランチからの push・PR でのみ意味を持つ（feature-builder が担当外のセッションで
+harness/ をローカル Hook 経由せず直接編集した場合等はここで検知できる）。
+
 ### 判定ロジックの実体はHookと共有
 
 `ci_check.py` は `harness/hooks/lib/path_utils.py` の `validate_status_transition`・
