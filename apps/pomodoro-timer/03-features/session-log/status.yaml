@@ -1,6 +1,6 @@
 feature_id: session-log
 app_id: pomodoro-timer
-state: TESTED
+state: INTEGRATED
 state_history:
 - state: NOT_STARTED
   at: '2026-08-20T08:21:26Z'
@@ -22,11 +22,17 @@ state_history:
   at: '2026-08-20T10:00:00Z'
   by: feature-builder
   note: code-review(シングルパス)の指摘4件に対応し、vitest 38件が全て通過
+- state: INTEGRATED
+  at: '2026-08-20T18:10:00Z'
+  by: integrator
+  note: >-
+    main へ --no-ff マージ済み。04-integration/assembly で timer-core と結線し、
+    結合テスト(assembly/tests/)が全て通過。security-review/code-reviewを実施。
 assignee: null
 branch: feature/pomodoro-timer/session-log
-worktree_path: apps/pomodoro-timer/.worktrees/session-log
+worktree_path: null
 contract_version: 1
 blockers: []
 superseded_by: null
-last_updated_at: '2026-08-20T10:00:00Z'
-updated_by: feature-builder
+last_updated_at: '2026-08-20T18:10:00Z'
+updated_by: integrator
