@@ -2,8 +2,11 @@
 """PreToolUse hook: harness/CONVENTIONS.md 7節の Rule 1〜3, 5〜7, 9 を強制する（Rule 4/8 は別 hook）。
 **依存ゼロ**（標準ライブラリのみ）。Edit/Write/MultiEdit/NotebookEdit は確実にブロックする。
 Bash 経由の間接書き込み（`sed -i`/`cp`/`mv`/`tee`/リダイレクト等、`path_utils.extract_bash_candidate_paths`
-で検知できる範囲）も同様にブロックする。ヒューリスティック検知のため検知漏れ（false negative）は
-起こりうるが、それは許容する（目的は完全な防御ではなく、意図しない/不注意な間接書き込みを止めること）。
+で検知できる範囲）も同様にブロックする。検知は shlex によるクォート考慮トークン化に基づくため、
+クォート内の文字列（例: `echo "a >> b"` の `>>`）を演算子と誤認識することはない。ただし変数展開
+されたパス等の検知漏れ（false negative）は起こりうる。これは「完全な防御ではなく、意図しない/
+不注意な間接書き込みを止める」という目的上許容する。**バイパス用の環境変数は意図的に用意しない**
+（AIがブロックされた際に自ら解除して実行できてしまい、決定論的強制が意味を失うため）。
 
 exit 0 = 許可, exit 2 = 拒否（stderr に理由）。
 """
@@ -225,12 +228,6 @@ def main() -> int:
     toplevel = path_utils.get_worktree_toplevel(cwd) or cwd
 
     if tool_name == "Bash":
-        if os.environ.get("HARNESS_BASH_GUARD_UNLOCK") == "1":
-            print(
-                "警告: HARNESS_BASH_GUARD_UNLOCK=1 により Bash 間接書き込み検知を今回スキップしています",
-                file=sys.stderr,
-            )
-            return 0
         command = tool_input.get("command", "")
         candidates = path_utils.extract_bash_candidate_paths(command)
         violations = []
@@ -248,12 +245,6 @@ def main() -> int:
             )
             for v in violations:
                 print(f"  - {v}", file=sys.stderr)
-            print(
-                "このコマンドが実際には書き込みではない（例: `>` を含む文字列をクォート内で"
-                "扱っているだけ）といった誤検知の場合は、環境変数 HARNESS_BASH_GUARD_UNLOCK=1 を"
-                "設定してこのチェックを一度だけスキップしてください。",
-                file=sys.stderr,
-            )
             return 2
         return 0
 

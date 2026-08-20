@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 import subprocess
 import sys
 
@@ -25,14 +26,11 @@ STATUS_LINEAR_ORDER = [
 STATUS_TERMINAL_STATES = {"INTEGRATED", "SUPERSEDED"}
 STATUS_ALL_STATES = set(STATUS_LINEAR_ORDER) | {"BLOCKED", "SUPERSEDED"}
 
-# Bash からの間接書き込みをヒューリスティックに検知するための簡易パターン（v0: 警告のみ、非ブロック）
-_BASH_WRITE_PATTERNS = [
-    re.compile(r">>?\s*([^\s|;&]+)"),
-    re.compile(r"\bcp\s+\S+\s+([^\s|;&]+)"),
-    re.compile(r"\bmv\s+\S+\s+([^\s|;&]+)"),
-    re.compile(r"\btee\s+([^\s|;&]+)"),
-    re.compile(r"\bsed\s+-i\S*\s+\S+\s+([^\s|;&]+)"),
-]
+# Bash からの間接書き込みを検知するためのトークン集合。shlex でクォートを尊重してトークン化した
+# 上でこれらと突き合わせるため、クォート内の文字列（例: `echo "a >> b"` の `>>`）を演算子と
+# 誤認識しない。`;`/`&&`/`||`/`|`/`&`/`(`/`)` は「1コマンド分」を区切るための境界として扱う。
+_BASH_WRITE_REDIRECT_OPS = {">", ">>"}
+_BASH_SEGMENT_BREAKS = {";", "&&", "||", "|", "&", "(", ")"}
 
 
 def read_hook_input() -> dict:
@@ -116,12 +114,62 @@ def extract_structured_edit_paths(tool_name: str, tool_input: dict) -> list[str]
     return []
 
 
+def _tokenize_bash_command(command: str) -> list[str] | None:
+    """command を shlex でクォートを尊重してトークン化する。posix モードなのでクォートは
+    剥がされ、クォート内の記号（`>` 等）は独立したトークンにならず語の一部として扱われる。
+    クォート不整合等でトークン化できない場合は None を返す（判定不能として安全側＝許可に倒す）。
+    """
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True
+        return list(lexer)
+    except ValueError:
+        return None
+
+
+def _extract_write_targets_from_segment(tokens: list[str]) -> list[str]:
+    """1コマンド分のトークン列から、書き込み先になりうるパスを抽出する。"""
+    targets: list[str] = []
+    for i, tok in enumerate(tokens):
+        if tok in _BASH_WRITE_REDIRECT_OPS and i + 1 < len(tokens):
+            targets.append(tokens[i + 1])
+
+    if not tokens:
+        return targets
+    cmd, args = tokens[0], tokens[1:]
+    non_flag_args = [a for a in args if not a.startswith("-")]
+
+    if cmd in ("cp", "mv") and non_flag_args:
+        targets.append(non_flag_args[-1])
+    elif cmd == "tee":
+        targets.extend(non_flag_args)
+    elif cmd == "sed" and non_flag_args and any(a == "-i" or a.startswith("-i") for a in args):
+        targets.append(non_flag_args[-1])
+
+    return targets
+
+
 def extract_bash_candidate_paths(command: str) -> list[str]:
-    """Bash コマンド文字列からヒューリスティックにパス候補を抽出する（警告用途、非ブロック）。"""
+    """Bash コマンド文字列から、書き込み先になりうるパス候補を抽出する。
+    クォートを尊重してトークン化してから判定するため、クォート内の文字列に `>` 等が
+    含まれていても演算子と誤認識しない。それでも変数展開されたパス等の検知漏れは残る
+    （完全な防御ではなく、意図しない/不注意な間接書き込みを止めるためのヒューリスティック）。
+    """
+    tokens = _tokenize_bash_command(command)
+    if not tokens:
+        return []
+
+    segments: list[list[str]] = [[]]
+    for tok in tokens:
+        if tok in _BASH_SEGMENT_BREAKS:
+            segments.append([])
+        else:
+            segments[-1].append(tok)
+
     candidates: list[str] = []
-    for pattern in _BASH_WRITE_PATTERNS:
-        candidates.extend(pattern.findall(command))
-    return [c.strip("'\"") for c in candidates if c and not c.startswith("-")]
+    for seg in segments:
+        candidates.extend(_extract_write_targets_from_segment(seg))
+    return candidates
 
 
 def to_worktree_relative(abs_or_rel_path: str, toplevel: str) -> str:

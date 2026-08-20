@@ -67,15 +67,20 @@ git remote add harness-origin git@github.com:studioyukidaruma-dev/apparness-harn
   遷移できるため、理論上は飛び越しチェックをすり抜けられる。`HARNESS_GUIDE.md` 11節参照）。
   ブランチ: `harness/status-transition-guard`。
 - [x] **Bash 経由の間接的な書き込みを実際にブロックする**。`sed -i`/`cp`/`mv`/`tee`/リダイレクト等が
-  Rule 1・2・3・5・6（`tool_name`/`tool_input` を要求しない Rule）のいずれかに違反する場合、警告のみ
-  だったのを `exit 2` で Bash コマンドの実行自体を拒否するようにした（`CONVENTIONS.md` 7節末尾）。
+  Rule 1・2・3・5・6（`tool_input` を要求しない Rule）のいずれかに違反する場合、警告のみだったのを
+  `exit 2` で Bash コマンドの実行自体を拒否するようにした（`CONVENTIONS.md` 7節末尾）。
   実装中、自分自身のセッションで実際にこの新しい挙動が発火し、**テストスクリプトの中でクォートに
   囲われた文字列（`payload "echo hi >> ..."` のような、実際には書き込みではない`>>`を含む文字列
-  引数）まで誤検知することを実地で確認**した。これを受けて、`HARNESS_UNLOCK=1`（Rule 1専用）とは
-  別に、Bash検知全体を1回だけスキップする環境変数 `HARNESS_BASH_GUARD_UNLOCK=1` を新設した
-  （`CONVENTIONS.md` 8節）。根本的な誤検知解消には簡易シェル字句解析が必要だが、v1ではスコープ外
-  とした（`HARNESS_GUIDE.md` 11節に既知の制約として明記）。
+  引数）まで誤検知することを実地で確認**した。
   ブランチ: `harness/block-bash-indirect-writes`。
+  - **同一セッション内で撤回・修正**: 上記の誤検知への当初の対処（Bash検知全体を1回だけスキップする
+    環境変数 `HARNESS_BASH_GUARD_UNLOCK=1` の新設）は、ユーザーから「AIがブロックされた際に自ら
+    ロックを解除して実行できてしまい、決定論的強制の意味を失う。逃げ道ではなく根本的な解決を」
+    という明確な指摘を受けて撤回した。代わりに検知ロジック自体を見直し、正規表現の直接マッチから
+    `shlex`（標準ライブラリ、依存ゼロ）によるクォート考慮トークン化に置き換えることで、誤検知の
+    原因（クォート内の `>` を演算子と誤認識すること）を根本的に解消した。バイパス用の環境変数は
+    削除し、存在しない（`HARNESS_UNLOCK=1` は Rule 1 専用のまま維持）。18パターン
+    （真陽性10・真陰性8）のテストで検証済み。ブランチ: `harness/fix-bash-guard-tokenizer`。
 
 ## v1 で着手予定の項目
 
