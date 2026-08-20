@@ -3,7 +3,7 @@
 app_id: "pomodoro-timer"
 app_name: "ポモドーロタイマー"
 version: 1
-status: DRAFT
+status: APPROVED
 summary: >-
   ブラウザ上で動作する、認証や外部API連携を持たないシンプルなポモドーロタイマー。
   作業時間と休憩時間を交互にカウントダウンし、ユーザーが自分のペースに合わせて
@@ -83,6 +83,6 @@ constraints:
   - 静的ファイルとしてホスティング可能な構成にする（ビルド成果物を任意の静的ホスティングに配置できる）。
   - ユーザーアカウント・ログインの概念を持たない。
 open_questions: []
-approved_by: null
-approved_at: null
+approved_by: "せのび！"
+approved_at: "2026-08-20T00:00:00Z"
 superseded_by: null

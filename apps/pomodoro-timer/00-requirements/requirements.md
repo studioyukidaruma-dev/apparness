@@ -5,7 +5,7 @@
 
 - app_id: `pomodoro-timer`
 - version: 1
-- status: DRAFT
+- status: APPROVED（承認者: せのび！ / 2026-08-20）
 
 ## 概要 (Summary)
 
