@@ -1,0 +1,20 @@
+feature_id: timer-core
+app_id: pomodoro-timer
+state: CONTRACT_APPROVED
+state_history:
+- state: NOT_STARTED
+  at: '2026-08-20T08:21:25Z'
+  by: new-feature-worktree
+  note: scaffold created
+- state: CONTRACT_APPROVED
+  at: '2026-08-20T08:21:25Z'
+  by: new-feature-worktree
+  note: worktree scaffold created
+assignee: null
+branch: feature/pomodoro-timer/timer-core
+worktree_path: apps/pomodoro-timer/.worktrees/timer-core
+contract_version: null
+blockers: []
+superseded_by: null
+last_updated_at: '2026-08-20T08:21:25Z'
+updated_by: new-feature-worktree
