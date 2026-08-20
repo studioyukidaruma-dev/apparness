@@ -66,13 +66,22 @@ git remote add harness-origin git@github.com:studioyukidaruma-dev/apparness-harn
   **既知の簡略化**: `BLOCKED` を経由した遷移は検証しない（`BLOCKED` からはどの状態へも自由に
   遷移できるため、理論上は飛び越しチェックをすり抜けられる。`HARNESS_GUIDE.md` 11節参照）。
   ブランチ: `harness/status-transition-guard`。
+- [x] **Bash 経由の間接的な書き込みを実際にブロックする**。`sed -i`/`cp`/`mv`/`tee`/リダイレクト等が
+  Rule 1・2・3・5・6（`tool_name`/`tool_input` を要求しない Rule）のいずれかに違反する場合、警告のみ
+  だったのを `exit 2` で Bash コマンドの実行自体を拒否するようにした（`CONVENTIONS.md` 7節末尾）。
+  実装中、自分自身のセッションで実際にこの新しい挙動が発火し、**テストスクリプトの中でクォートに
+  囲われた文字列（`payload "echo hi >> ..."` のような、実際には書き込みではない`>>`を含む文字列
+  引数）まで誤検知することを実地で確認**した。これを受けて、`HARNESS_UNLOCK=1`（Rule 1専用）とは
+  別に、Bash検知全体を1回だけスキップする環境変数 `HARNESS_BASH_GUARD_UNLOCK=1` を新設した
+  （`CONVENTIONS.md` 8節）。根本的な誤検知解消には簡易シェル字句解析が必要だが、v1ではスコープ外
+  とした（`HARNESS_GUIDE.md` 11節に既知の制約として明記）。
+  ブランチ: `harness/block-bash-indirect-writes`。
 
 ## v1 で着手予定の項目
 
 `HARNESS_GUIDE.md` 11節「既知の制約」に対応する拡張候補。優先度は未定、着手時に相談して決める。
 
 - [ ] **CI連携**（今回の会話で最初に挙がった項目）。GitHub Actions等で、`feature-builder`/`integrator` が書く結合テスト・単体テストを push/PR のたびに自動実行する仕組み。現状は Claude Code Hooks のみで完結させている
-- [ ] Bash 経由の間接的な書き込み（`sed -i` 等）を警告だけでなく実際にブロックする（誤検知リスクとのトレードオフを検討）
 - [ ] ライブラリの脆弱性スキャンの自動化（`npm audit`/`pip-audit`/OSV等をHookやCIに統合）
 - [ ] `find-skills` を用いた専門Skillの自動発見・`required_skills[]` への提案（現状は手動でSkill名を把握してからでないと使えない）
 

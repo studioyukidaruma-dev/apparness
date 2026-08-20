@@ -219,7 +219,8 @@ sequenceDiagram
     participant Hook as pre_tool_use_guard.py
     participant FS as ファイルシステム
 
-    Agent->>Hook: Edit/Write/MultiEdit 呼び出し(stdin JSON)
+    Agent->>Hook: Edit/Write/MultiEdit または Bash 呼び出し(stdin JSON)
+    Note over Hook: Bash の場合はコマンド文字列から正規表現でパス候補を抽出し<br/>Rule1/2/3/5/6 のみ判定（Rule7/9は内容比較が必要なため対象外）
     Hook->>Hook: Rule1 ハーネス非侵襲性チェック
     Hook->>Hook: Rule2 担当外ガード
     Hook->>Hook: Rule6 上位文書ガード
@@ -260,7 +261,7 @@ sequenceDiagram
 | 8 | フェーズ節目のコミット強制 | `status.yaml`/`requirements.machine.yaml`/`architecture.machine.yaml`（Stop/SubagentStop） | いずれかが `git status --porcelain --untracked-files=all` で未コミット |
 | 9 | 状態遷移の妥当性チェック | `status.yaml` の `state` 書き換え | 書き込み前後の `state` が妥当な遷移でない（直線状態の後退・複数段階の飛び越し、終端状態からの変更） |
 
-v0では **Edit/Write/MultiEdit/NotebookEdit のみ確実にブロック**します。Bash 経由の間接書き込み（`sed -i` 等）は検知しても警告のみで、実行は止めません（誤検知でBash全体を止める体験悪化を避けるため）。Rule 8 は例外的に `Stop`/`SubagentStop` イベントで動作し、ツール呼び出しではなく応答終了そのものをブロックします。Rule 9 は `BLOCKED` を経由した遷移は検証せず自由に通す既知の簡略化があります（11節）。
+**Edit/Write/MultiEdit/NotebookEdit** に加え、**Rule 1・2・3・5・6 は `Bash` 経由の間接書き込み**（`sed -i` / `cp` / `mv` / `tee` / リダイレクト等）**もブロック**します（v1、コマンド文字列への正規表現マッチのため、クォート内の文字列を誤検知する等の限界あり。誤検知時は環境変数 `HARNESS_BASH_GUARD_UNLOCK=1` で回避可能。Rule 7・9 は書き込み前後の内容比較が必要なため Bash 経由では判定対象外）。Rule 8 は例外的に `Stop`/`SubagentStop` イベントで動作し、ツール呼び出しではなく応答終了そのものをブロックします。Rule 9 は `BLOCKED` を経由した遷移は検証せず自由に通す既知の簡略化があります（11節）。
 
 ---
 
@@ -343,7 +344,7 @@ graph LR
 | 結合テストのシナリオ網羅性 | ❌ | ⚠️ integratorの判断 |
 | フェーズ節目（status.yaml等）のコミット実行 | ✅ Rule 8（Stop/SubagentStop） | — |
 | コミット内容の妥当性（メッセージ・粒度） | ❌ | ⚠️ プロンプトの指示に依存（コミットが行われること自体はRule 8が強制） |
-| Bash経由の間接的な書き込み | ❌（警告のみ） | ⚠️ 検知はするが遮断しない（v1で強化予定） |
+| Bash経由の間接的な書き込み（Rule1/2/3/5/6相当） | ✅ 正規表現マッチで検知しブロック（誤検知時は`HARNESS_BASH_GUARD_UNLOCK=1`で回避） | — |
 
 **読み方**: ✅ は「Claudeが指示に従わなくても、システムが機械的に阻止/実行する」層。⚠️ は「プロンプトに明記されているが、最終的にはAIの遵守に依存する」層です。⚠️ の項目は `PROGRESS.md` の `autonomy_mode` 表示や、人間によるレビューで補完することを前提としています。
 
@@ -432,13 +433,18 @@ graph TD
 
 ## 11. 既知の制約・v1以降の拡張候補
 
-- Bash 経由の間接書き込みはブロックされず警告のみ（誤検知でBash全体を止める体験悪化を避けるため）
 - CI（GitHub Actions等）との連携は範囲外。Claude Code Hooksのみで完結させている
 - ライブラリの脆弱性スキャンは自動化されておらず、`solution-architect` の調査と `security-review` skill に依存
 - Rule 9（status.yaml状態遷移チェック）は `BLOCKED` を経由した遷移を検証しない。`BLOCKED` からは
   どの状態へも自由に遷移できてしまうため、理論上は `BLOCKED` を経由して直線状態の飛び越しチェックを
   すり抜けられる（`state_history[]` を遡って直前の実質的なレベルを復元すれば厳密化できるが、
   v1 ではそこまで行っていない）
+- Bash 経由の間接書き込み検知（v1で追加）は、コマンド文字列への正規表現マッチであり、シェルの構文
+  （クォート・変数展開・比較演算子としての `>` 等）を理解しない。そのため、実際には書き込みでない
+  箇所（クォート内の文字列にたまたま `>` を含む等）を誤ってブロックする**誤検知**が起こりうる
+  （実地で確認済み: 例えば `echo "a >> b.txt"` のような、パスに見えるだけの文字列を渡すコマンドでも
+  誤検知しうる）。誤検知時は環境変数 `HARNESS_BASH_GUARD_UNLOCK=1` で個別に回避できる（8節）が、
+  根本的な解決には簡易シェル字句解析（クォート・エスケープを考慮したトークナイズ）が必要
 
 これらは実際にアプリを1本作ってみてから、必要に応じて拡張する方針です。
 
@@ -450,3 +456,7 @@ graph TD
   `CONTRACT_APPROVED` から `NOT_STARTED` に後退させる、といった書き込みを `PreToolUse` フック
   （5節 Rule 9、`path_utils.validate_status_transition`）でブロックする仕組み。上記の
   `BLOCKED` 経由の抜け穴を除く）
+- Bash 経由の間接的な書き込み（`sed -i`/`cp`/`mv`/`tee`/リダイレクト等）の実ブロック化。
+  Rule 1・2・3・5・6 相当の違反を検知した場合、警告ではなく `exit 2` で Bash コマンドの実行自体を
+  拒否するようにした。誤検知時の回避策として環境変数 `HARNESS_BASH_GUARD_UNLOCK=1`
+  （`HARNESS_UNLOCK=1` とは別。Bash検知全体をスキップする）を新設した（8節）

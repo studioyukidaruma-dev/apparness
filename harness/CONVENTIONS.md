@@ -148,14 +148,26 @@ NOT_STARTED → CONTRACT_DRAFTED → CONTRACT_APPROVED → IN_PROGRESS → IMPLE
    `INTEGRATED` にする、`CONTRACT_APPROVED` から `NOT_STARTED` に後退させる、といった書き込みを
    機械的に防ぐ。判定ロジックは `path_utils.validate_status_transition`。
 
-v0 では Edit/Write/MultiEdit/NotebookEdit という構造化ツール呼び出しのみを確実にブロックします。
-Bash 経由の間接的な書き込み（`sed -i` 等）は検知しても警告のみで、ブロックはしません
-（誤検知で Bash 全体を止める開発体験の悪化を避けるため。v1 で強化予定）。
+Edit/Write/MultiEdit/NotebookEdit という構造化ツール呼び出しに加え、`Bash` 経由の間接的な書き込み
+（`sed -i` / `cp` / `mv` / `tee` / リダイレクト等、`path_utils.extract_bash_candidate_paths` が
+コマンド文字列から正規表現で検知できる範囲）についても、Rule 1・2・3・5・6（`tool_name`/`tool_input`
+を要求しない Rule のみ。Rule 7・9 は Edit/Write/MultiEdit の書き込み前後内容比較に依存するため対象外）
+に違反する場合は同様にブロックします（v1）。
+
+この検知はコマンド文字列に対する単純な正規表現マッチであり、シェルの構文（クォート・変数展開・
+比較演算子としての `>` 等）を理解しません。そのため、実際には書き込みでない箇所（例: クォートで
+囲われた文字列の中にたまたま `>` を含む）を誤って書き込みと判定する**誤検知（false positive）**、
+および変数展開されたパス等を見逃す**検知漏れ（false negative）**の両方が起こりえます。検知漏れは
+「完全な防御ではなく、意図しない/不注意な間接書き込みを止める」という目的上許容し、誤検知は
+8節の `HARNESS_BASH_GUARD_UNLOCK=1` で個別に回避できるようにしています。
 
 ## 8. 緊急避難
 
-Rule 1（ハーネス非侵襲性）を意図的に解除したい場合は環境変数 `HARNESS_UNLOCK=1` を設定してください。
-解除時は stderr に警告が出ます。恒常的な運用には使わないでください。
+- Rule 1（ハーネス非侵襲性）を意図的に解除したい場合は環境変数 `HARNESS_UNLOCK=1` を設定してください。
+- Bash 経由の間接書き込み検知（7節末尾）が誤検知だと判断した場合は、環境変数
+  `HARNESS_BASH_GUARD_UNLOCK=1` を設定するとその回の検知だけをスキップできます。
+
+どちらも解除時は stderr に警告が出ます。恒常的な運用には使わないでください。
 
 ## 9. 自動化の度合い (`AUTONOMY.yaml`)
 

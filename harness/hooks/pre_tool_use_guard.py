@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """PreToolUse hook: harness/CONVENTIONS.md 7節の Rule 1〜3, 5〜7, 9 を強制する（Rule 4/8 は別 hook）。
 **依存ゼロ**（標準ライブラリのみ）。Edit/Write/MultiEdit/NotebookEdit は確実にブロックする。
-Bash 経由の間接書き込みは v0 では警告のみで非ブロック（誤検知回避のため）。
+Bash 経由の間接書き込み（`sed -i`/`cp`/`mv`/`tee`/リダイレクト等、`path_utils.extract_bash_candidate_paths`
+で検知できる範囲）も同様にブロックする。ヒューリスティック検知のため検知漏れ（false negative）は
+起こりうるが、それは許容する（目的は完全な防御ではなく、意図しない/不注意な間接書き込みを止めること）。
 
 exit 0 = 許可, exit 2 = 拒否（stderr に理由）。
 """
@@ -223,22 +225,36 @@ def main() -> int:
     toplevel = path_utils.get_worktree_toplevel(cwd) or cwd
 
     if tool_name == "Bash":
+        if os.environ.get("HARNESS_BASH_GUARD_UNLOCK") == "1":
+            print(
+                "警告: HARNESS_BASH_GUARD_UNLOCK=1 により Bash 間接書き込み検知を今回スキップしています",
+                file=sys.stderr,
+            )
+            return 0
         command = tool_input.get("command", "")
         candidates = path_utils.extract_bash_candidate_paths(command)
-        warnings = []
+        violations = []
         for candidate in candidates:
             rel_path = path_utils.to_worktree_relative(candidate, toplevel)
             reason = run_checks(rel_path, cwd, toplevel)
             if reason:
-                warnings.append(reason)
-        if warnings:
+                violations.append(reason)
+        if violations:
             print(
-                "警告: Bash コマンドがガード対象パスへの書き込みを含む可能性があります"
-                "（v0 では Bash はブロックしません。構造化ツールでの編集を推奨します）:",
+                "拒否: Bash コマンドがガード対象パスへの間接的な書き込みを含んでいます"
+                "（sed -i / cp / mv / tee / リダイレクト等をコマンド文字列から検知）。"
+                "Edit/Write/MultiEdit などの構造化ツールを使ってください:",
                 file=sys.stderr,
             )
-            for w in warnings:
-                print(f"  - {w}", file=sys.stderr)
+            for v in violations:
+                print(f"  - {v}", file=sys.stderr)
+            print(
+                "このコマンドが実際には書き込みではない（例: `>` を含む文字列をクォート内で"
+                "扱っているだけ）といった誤検知の場合は、環境変数 HARNESS_BASH_GUARD_UNLOCK=1 を"
+                "設定してこのチェックを一度だけスキップしてください。",
+                file=sys.stderr,
+            )
+            return 2
         return 0
 
     for abs_path in path_utils.extract_structured_edit_paths(tool_name, tool_input):
