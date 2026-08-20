@@ -1,0 +1,100 @@
+# schema: harness/schemas/feature-contract.schema.json
+# この機能の入出力の唯一の情報源。担当者はこのファイルと SPEC.md だけを見れば実装できる。
+# CONTRACT_APPROVED 以降は harness/hooks/pre_tool_use_guard.py により書き込みが凍結される。
+feature_id: "settings"
+feature_name: "設定"
+version: 1
+description: >-
+  作業時間・短い休憩時間・長い休憩時間・長い休憩までの作業セッション数・通知音ON/OFFを
+  ユーザーが編集できる設定画面。入力値を検証したうえで localStorage に永続化し、
+  現在の設定値を timer_settings として他機能に提供する。timer-core の内部状態
+  （カウントダウンの進行方法など）には一切関知しない。
+inputs:
+  - name: "settings_form_input"
+    json_schema:
+      type: object
+      required:
+        - work_minutes
+        - short_break_minutes
+        - long_break_minutes
+        - sessions_until_long_break
+        - sound_enabled
+      properties:
+        work_minutes: { type: integer }
+        short_break_minutes: { type: integer }
+        long_break_minutes: { type: integer }
+        sessions_until_long_break: { type: integer }
+        sound_enabled: { type: boolean }
+    required: true
+    description: >-
+      設定フォームから送信された生の入力値。保存前にこの機能内部で範囲検証
+      （1以上・上限以下の整数であること等）を行い、不正な場合は INVALID_INPUT として
+      拒否し保存しない（外部入力を信頼しない。security-baseline 1節）。
+    example:
+      work_minutes: 25
+      short_break_minutes: 5
+      long_break_minutes: 15
+      sessions_until_long_break: 4
+      sound_enabled: true
+outputs:
+  - name: "timer_settings"
+    json_schema:
+      type: object
+      additionalProperties: false
+      required:
+        - work_minutes
+        - short_break_minutes
+        - long_break_minutes
+        - sessions_until_long_break
+        - sound_enabled
+      properties:
+        work_minutes: { type: integer, minimum: 1, maximum: 180 }
+        short_break_minutes: { type: integer, minimum: 1, maximum: 60 }
+        long_break_minutes: { type: integer, minimum: 1, maximum: 60 }
+        sessions_until_long_break: { type: integer, minimum: 1, maximum: 12 }
+        sound_enabled: { type: boolean }
+    description: >-
+      検証・永続化済みの現在の設定値。timer-core機能が次回セッション開始/リセット時に
+      読み込む（interfaces[] 参照）。初回アクセス時（localStorageに値が無い場合）は
+      既定値（work_minutes:25, short_break_minutes:5, long_break_minutes:15,
+      sessions_until_long_break:4, sound_enabled:true）を返す。
+    example:
+      work_minutes: 25
+      short_break_minutes: 5
+      long_break_minutes: 15
+      sessions_until_long_break: 4
+      sound_enabled: true
+side_effects:
+  - "検証済み設定値を localStorage キー `pomodoro-timer:settings:v1` に保存する"
+error_cases:
+  - code: "INVALID_INPUT"
+    condition: >-
+      いずれかの分数値が0以下または上限（work_minutes:180 / short_break_minutes:60 /
+      long_break_minutes:60）を超える、あるいは sessions_until_long_break が1未満または
+      12を超える。
+    response_shape: { type: object }
+  - code: "STORAGE_UNAVAILABLE"
+    condition: "localStorageへの書き込みに失敗した（プライベートブラウジング等の制限含む）"
+    response_shape: { type: object }
+tech_stack:
+  language: "JavaScript (ES2022, native ES Modules)"
+  framework: ""
+  libraries:
+    - name: "vitest"
+      version: "^4.1"
+      license: "MIT"
+      notes: >-
+        開発時のユニットテスト専用（devDependency）。本番の静的配信物には含めない。
+        入力検証ロジックを純粋関数として切り出しvitestで単体テストする。
+        2026年8月時点でメンテナンスが活発であることを確認済み。既知の重大な脆弱性報告なし。
+non_functional:
+  persistence: >-
+    ページを再読み込みしても設定値を保持する。初回アクセス時（localStorageが空）は
+    既定値を使用する。
+test_strategy: >-
+  入力値の範囲検証ロジックを純粋関数として切り出しvitestで単体テストする
+  （境界値: 0, 負数, 上限超え, 小数等）。localStorageへの実読み書きはブラウザ環境に
+  依存するため結合確認は手動で行う。
+created_at: null
+approved_at: null
+approved_by: null
