@@ -3,28 +3,70 @@
 app_id: "pomodoro-timer"
 design_version: 1
 based_on_requirements_version: 1
-status: DRAFT
+status: APPROVED
 shared_kernel_ref: "../01-foundation/shared-kernel.yaml"
-features: []
-# 例:
-# features:
-#   - id: "todo-list-api"
-#     name: ""
-#     description: ""
-#     contract_ref: "features/todo-list-api.contract.yaml"
-#     status_ref: "../03-features/todo-list-api/status.yaml"
-#     tech_stack:
-#       language: ""
-#       framework: ""
-#       libraries: []
-interfaces: []
-# 例:
-# interfaces:
-#   - producer_feature: "todo-list-api"
-#     producer_output: "todo_created_event"
-#     consumer_feature: "notification-service"
-#     consumer_input: "todo_created_event"
+features:
+  - id: "timer-core"
+    name: "タイマー本体"
+    description: >-
+      作業/短い休憩/長い休憩セッションを設定に沿ってカウントダウンし、作業セッション数に
+      応じて自動的に休憩種別を切り替える中核ロジック。開始/一時停止/再開/リセット操作を
+      提供する（FR-1に対応）。settings機能から timer_settings を受け取り、作業セッション
+      完了時に work_session_completed イベントを出力する以外、他機能の内部実装を知らない。
+    contract_ref: "features/timer-core.contract.yaml"
+    status_ref: "../03-features/timer-core/status.yaml"
+    tech_stack:
+      language: "JavaScript (ES2022, native ES Modules)"
+      framework: ""
+      libraries:
+        - name: "vitest"
+          version: "^4.1"
+          license: "MIT"
+          notes: "devDependency。カウントダウン/自動切替ロジックの単体テスト専用。"
+  - id: "settings"
+    name: "設定"
+    description: >-
+      作業時間・短い休憩時間・長い休憩時間・長い休憩までの作業セッション数・通知音ON/OFFを
+      ユーザーが編集できる設定画面（FR-2に対応）。入力値を検証し localStorage に永続化する。
+      検証済みの値を timer_settings として timer-core に提供する以外、timer-core が
+      それをいつ・どう使うかには関知しない。
+    contract_ref: "features/settings.contract.yaml"
+    status_ref: "../03-features/settings/status.yaml"
+    tech_stack:
+      language: "JavaScript (ES2022, native ES Modules)"
+      framework: ""
+      libraries:
+        - name: "vitest"
+          version: "^4.1"
+          license: "MIT"
+          notes: "devDependency。入力検証ロジックの単体テスト専用。"
+  - id: "session-log"
+    name: "セッション記録"
+    description: >-
+      完了した作業セッションを日時・所要時間とともに記録し、一覧・件数を表示する
+      （FR-3に対応）。timer-core が出力する work_session_completed イベントを受け取り
+      localStorageに永続化する。イベントがどう生成されたか（カウントダウンの内部状態等）
+      には一切関知しない。
+    contract_ref: "features/session-log.contract.yaml"
+    status_ref: "../03-features/session-log/status.yaml"
+    tech_stack:
+      language: "JavaScript (ES2022, native ES Modules)"
+      framework: ""
+      libraries:
+        - name: "vitest"
+          version: "^4.1"
+          license: "MIT"
+          notes: "devDependency。記録追加/集計/全件クリアロジックの単体テスト専用。"
+interfaces:
+  - producer_feature: "settings"
+    producer_output: "timer_settings"
+    consumer_feature: "timer-core"
+    consumer_input: "timer_settings"
+  - producer_feature: "timer-core"
+    producer_output: "work_session_completed"
+    consumer_feature: "session-log"
+    consumer_input: "work_session_completed"
 superseded_by: null
-updated_at: null
-approved_by: null
-approved_at: null
+updated_at: "2026-08-20T09:00:00Z"
+approved_by: "せのび！ (via orchestrator, SUPERVISEDモードでの技術スタック自律進行を明示的に委任された範囲内での承認)"
+approved_at: "2026-08-20T09:00:00Z"
