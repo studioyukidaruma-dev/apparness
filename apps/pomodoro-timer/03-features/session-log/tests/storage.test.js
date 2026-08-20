@@ -49,15 +49,12 @@ describe("loadRecords", () => {
     expect(result).toEqual({ ok: true, records: [] });
   });
 
-  it("falls back to an empty array when stored data is corrupted JSON", () => {
+  it("falls back to an empty array when stored data is corrupted JSON, without reporting STORAGE_UNAVAILABLE", () => {
+    // ストレージへの読み書き自体は成功しているため、STORAGE_UNAVAILABLE（読み書き失敗）
+    // とは区別し、既定値へのフォールバックとして扱う。
     const storage = createFakeStorage({ [STORAGE_KEY]: "{not valid json" });
     const result = loadRecords(storage);
-    expect(result.ok).toBe(false);
-    expect(result.records).toEqual([]);
-    expect(result.error).toEqual({
-      code: "STORAGE_UNAVAILABLE",
-      message: expect.any(String),
-    });
+    expect(result).toEqual({ ok: true, records: [] });
   });
 
   it("reports STORAGE_UNAVAILABLE without throwing when storage access itself fails", () => {

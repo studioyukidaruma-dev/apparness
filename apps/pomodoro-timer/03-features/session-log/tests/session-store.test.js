@@ -43,6 +43,26 @@ describe("isValidWorkSessionCompleted", () => {
     ).toBe(false);
   });
 
+  it("rejects a completed_at with a calendar date that does not exist", () => {
+    // Date.parse は "2026-02-30" のような実在しない日付を寛容に丸めてしまう
+    // （"2026-03-02" 等として解釈される）ため、桁の形だけでなく実在する暦日かどうかを検証する。
+    expect(isValidWorkSessionCompleted({ ...validEvent, completed_at: "2026-02-30T10:00:00Z" })).toBe(
+      false,
+    );
+    expect(isValidWorkSessionCompleted({ ...validEvent, completed_at: "2026-04-31T10:00:00Z" })).toBe(
+      false,
+    );
+    expect(isValidWorkSessionCompleted({ ...validEvent, completed_at: "2026-08-20T25:00:00Z" })).toBe(
+      false,
+    );
+  });
+
+  it("accepts a leap-day completed_at in a leap year", () => {
+    expect(isValidWorkSessionCompleted({ ...validEvent, completed_at: "2024-02-29T10:00:00Z" })).toBe(
+      true,
+    );
+  });
+
   it("rejects duration_seconds that is not a positive integer", () => {
     expect(isValidWorkSessionCompleted({ ...validEvent, duration_seconds: 0 })).toBe(false);
     expect(isValidWorkSessionCompleted({ ...validEvent, duration_seconds: -5 })).toBe(false);

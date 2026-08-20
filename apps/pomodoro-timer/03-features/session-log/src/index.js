@@ -5,6 +5,7 @@
 export { SessionLog, createSessionLog } from "./session-log.js";
 export {
   isValidWorkSessionCompleted,
+  isValidIsoDateTime,
   addRecord,
   clearRecords,
   computeSummary,

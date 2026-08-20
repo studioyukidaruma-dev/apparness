@@ -9,12 +9,49 @@
 
 export const WORK_SESSION_TYPE = "WORK";
 
-// RFC3339/ISO8601 の日時文字列であることを最低限確認する正規表現。
+// RFC3339/ISO8601 の日時文字列であることを確認する正規表現。
 // (例: "2026-08-20T09:30:00Z", "2026-08-20T09:30:00.123+09:00")
 const ISO_DATE_TIME_RE =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
 
 const ALLOWED_EVENT_KEYS = ["completed_at", "duration_seconds", "session_type"];
+
+/**
+ * 与えられた年月の日数を返す（うるう年を考慮する）。
+ * @param {number} year
+ * @param {number} month 1〜12
+ */
+function daysInMonth(year, month) {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+/**
+ * ISO8601形式の文字列であることに加え、"2026-02-30" のような実在しない暦日を
+ * 拒否する。Date.parse はこの種の不正な日付を寛容に丸めてしまう
+ * （例: "2026-02-30" を "2026-03-02" として受理する）ため、桁の形だけでなく
+ * 年月日・時分秒の値の範囲を明示的に検証する。
+ * @param {string} value
+ */
+export function isValidIsoDateTime(value) {
+  const match = ISO_DATE_TIME_RE.exec(value);
+  if (!match) return false;
+
+  const [, yearStr, monthStr, dayStr, hourStr, minuteStr, secondStr] = match;
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  const day = Number(dayStr);
+  const hour = Number(hourStr);
+  const minute = Number(minuteStr);
+  const second = Number(secondStr);
+
+  if (month < 1 || month > 12) return false;
+  if (day < 1 || day > daysInMonth(year, month)) return false;
+  if (hour > 23) return false;
+  if (minute > 59) return false;
+  if (second > 60) return false; // うるう秒を許容する
+
+  return true;
+}
 
 /**
  * contract.yaml の work_session_completed json_schema に従って入力を検証する。
@@ -40,10 +77,7 @@ export function isValidWorkSessionCompleted(event) {
 
   const { completed_at, duration_seconds, session_type } = event;
 
-  if (typeof completed_at !== "string" || !ISO_DATE_TIME_RE.test(completed_at)) {
-    return false;
-  }
-  if (Number.isNaN(Date.parse(completed_at))) {
+  if (typeof completed_at !== "string" || !isValidIsoDateTime(completed_at)) {
     return false;
   }
   if (

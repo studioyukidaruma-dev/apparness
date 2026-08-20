@@ -45,19 +45,36 @@ export function loadRecords(storage) {
   if (!target) {
     return { ok: false, records: [], error: makeStorageError("load") };
   }
+
+  let raw;
   try {
-    const raw = target.getItem(STORAGE_KEY);
-    if (raw === null) {
-      return { ok: true, records: [] };
-    }
+    raw = target.getItem(STORAGE_KEY);
+  } catch (err) {
+    // localStorage自体へのアクセスが失敗したケース（プライベートブラウジング等）。
+    console.warn("[session-log] localStorageの読み込みに失敗しました", err);
+    return { ok: false, records: [], error: makeStorageError("load") };
+  }
+
+  if (raw === null) {
+    return { ok: true, records: [] };
+  }
+
+  try {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) {
       // 壊れたデータは既定値（空配列）にフォールバックする（マイグレーション処理は持たない方針）。
       return { ok: true, records: [] };
     }
     return { ok: true, records: parsed };
-  } catch {
-    return { ok: false, records: [], error: makeStorageError("load") };
+  } catch (err) {
+    // ストレージへのアクセス自体は成功しているが、保存されていた値が壊れている（不正なJSON）ケース。
+    // STORAGE_UNAVAILABLE（読み書き失敗）とは原因が異なるため、ここではエラーとして報告せず、
+    // data_store.policy の「マイグレーション処理は持たない」方針に従い既定値へフォールバックする。
+    console.warn(
+      "[session-log] 保存されていた記録データの形式が不正なため、既定値にフォールバックします",
+      err,
+    );
+    return { ok: true, records: [] };
   }
 }
 
@@ -74,7 +91,8 @@ export function saveRecords(records, storage) {
   try {
     target.setItem(STORAGE_KEY, JSON.stringify(records));
     return { ok: true };
-  } catch {
+  } catch (err) {
+    console.warn("[session-log] localStorageへの保存に失敗しました", err);
     return { ok: false, error: makeStorageError("save") };
   }
 }

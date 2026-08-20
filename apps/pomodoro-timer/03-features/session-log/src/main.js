@@ -16,7 +16,8 @@ function main() {
   const durationInput = document.querySelector("[data-simulate-duration]");
 
   simulateButton?.addEventListener("click", () => {
-    const minutes = Number(durationInput?.value) || 25;
+    const parsedMinutes = Number(durationInput?.value);
+    const minutes = Number.isFinite(parsedMinutes) && parsedMinutes > 0 ? parsedMinutes : 25;
     const durationSeconds = Math.max(1, Math.round(minutes * 60));
     // work_session_completed の contract.yaml json_schema に沿ったダミーイベント。
     sessionLog.onWorkSessionCompleted({
