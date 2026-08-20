@@ -49,3 +49,7 @@ find-skills 等で見つかる専門的なルール集は、これに**追加**�
   （`solution-architect` が設計時に行うのが基本だが、`feature-builder` が実装中に新規追加する
   場合も同様に確認し、`contract.yaml` の `tech_stack.libraries[].notes` に確認結果を記録する）。
 - 長期未更新・非推奨・脆弱性報告のあるライブラリは避ける。
+- ここでの確認は選定時点の一度きりの人間/AI判断だが、`apps/` 配下の lockfile は CI
+  （`.github/workflows/harness-checks.yml` の `vuln-scan` job、`harness/scripts/vuln_scan.py`）
+  で push・PRのたびに OSV-Scanner による機械的な再検証を受ける。新たに公表された脆弱性も
+  以後の push で検知されるため、選定時に見落とした・後から報告された脆弱性の safety net になる。

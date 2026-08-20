@@ -7,7 +7,8 @@
 v0（要件定義〜組み上げの一気通貫、Hooks Rule 1〜7）に加え、v1 で以下を追加済み:
 フェーズ節目のコミット強制（Rule 8）・`status.yaml` 状態遷移の妥当性チェック（Rule 9）・
 Bash 経由の間接書き込みの実ブロック化・CI 連携（GitHub Actions によるサーバーサイド二重チェック、
-12節）。未着手の項目は `ROADMAP.md`「v1 で着手予定の項目」を参照。
+12節）・依存ライブラリの脆弱性スキャン（OSV-Scanner、13節）。未着手の項目は `ROADMAP.md`
+「v1 で着手予定の項目」を参照。
 
 ---
 
@@ -25,6 +26,7 @@ Bash 経由の間接書き込みの実ブロック化・CI 連携（GitHub Actio
 10. [自動化モード（AUTONOMY.yaml）](#10-自動化モードautonomyyaml)
 11. [既知の制約・v1以降の拡張候補](#11-既知の制約v1以降の拡張候補)
 12. [CI連携（サーバーサイド二重チェック）](#12-ci連携サーバーサイド二重チェック)
+13. [依存ライブラリの脆弱性スキャン（OSV-Scanner）](#13-依存ライブラリの脆弱性スキャンosv-scanner)
 
 ---
 
@@ -60,7 +62,7 @@ graph TB
             HOOKS["hooks/<br/>依存ゼロPython"]
             TMPL["templates/<br/>雛形"]
             SCHEMAS["schemas/<br/>JSON Schema"]
-            SCRIPTS["scripts/<br/>決定論ロジック（ci_check.py含む）"]
+            SCRIPTS["scripts/<br/>決定論ロジック（ci_check.py・vuln_scan.py含む）"]
             QUALITY["quality/<br/>品質ベースライン"]
         end
         subgraph GHACTIONS[".github/workflows/  ハーネス本体（書き込み保護対象）"]
@@ -443,7 +445,6 @@ graph TD
 
 ## 11. 既知の制約・v1以降の拡張候補
 
-- ライブラリの脆弱性スキャンは自動化されておらず、`solution-architect` の調査と `security-review` skill に依存
 - CI（12節）はアプリの技術スタックに依存しない範囲の再検証に留まる。feature-builder/integrator が
   書く単体・結合テストの自動実行はアプリごとに技術スタックが異なるため範囲外（各アプリ側で用意する）
 - Rule 9（status.yaml状態遷移チェック）は `BLOCKED` を経由した遷移を検証しない。`BLOCKED` からは
@@ -474,6 +475,7 @@ graph TD
   誤検知の原因（クォート内の `>` を演算子と誤認識すること）を解消した。バイパス用の環境変数は
   存在しない（`HARNESS_UNLOCK=1` は Rule 1 専用のまま）
 - CI連携（GitHub Actions）。詳細は12節
+- 依存ライブラリの脆弱性スキャン（OSV-Scanner、CI連携）。詳細は13節
 
 ---
 
@@ -552,3 +554,60 @@ PyYAML依存コードを import すること——は禁止のまま）。これ
 起動する。**現時点ではブランチ保護ルール（CI成功をマージ必須にする）は設定していない**
 （GitHub側のリポジトリ設定変更は影響範囲が大きいため、可視化のみに留めている。必須化したい
 場合は別途相談）。
+
+---
+
+## 13. 依存ライブラリの脆弱性スキャン（OSV-Scanner）
+
+`apps/<app-id>/` 配下で使われる依存ライブラリ（npm・pip・その他のパッケージマネージャ）に
+既知の脆弱性が無いかを、[OSV-Scanner](https://github.com/google/osv-scanner) を使って
+push・PR のたびに機械的に再検証する（`harness/scripts/vuln_scan.py`、
+`.github/workflows/harness-checks.yml` の `vuln-scan` job）。
+
+### なぜ npm audit / pip-audit を個別に統合しないか
+
+このハーネスは「どんなアプリでも作れる」ことを前提にしており、`solution-architect` が
+どの言語・パッケージマネージャを選ぶかは設計フェーズで初めて決まる（12節で述べた
+「配布時点でアプリの中身は空」という制約と同根）。`npm audit`・`pip-audit` はそれぞれ
+npm・pip というエコシステム固有の CLI であり、対応エコシステムを増やすたびにハーネス側の
+出し分けロジックが増える。OSV-Scanner はディレクトリを再帰的に走査して見つかった lockfile
+（`package-lock.json`・`requirements.txt`・`poetry.lock`・`Cargo.lock`・`go.sum` 等）の
+種類を自動判別し、OSV データベースに一括照会する単一のツールであり、ハーネス側がエコシステムを
+列挙する必要がない。ROADMAP.md では「npm audit/pip-audit/OSV等」を候補として挙げていたが、
+検討の結果 v1 では OSV-Scanner 一本を採用した。
+
+### なぜ Hook ではなく CI に置くか
+
+`harness/hooks/*.py` は「依存ゼロの標準ライブラリのみ」（5節）で、ツール呼び出しのたびに
+毎回起動される決定論レイヤーである。OSV-Scanner は外部バイナリであり、既定では OSV.dev への
+問い合わせにネットワークアクセスを要する。これを `PreToolUse` Hook に組み込むと、Edit/Write
+のたびにネットワーク越しの脆弱性DB照会が走ることになり、「低コストで毎回確実に効く」という
+Hook 層の前提そのものを壊す。そのため 12節と同じ判断で、CI 側にのみ置く。
+
+### 位置づけ（9節の品質保証の二層構造との関係）
+
+`security-review`/`code-review` bundled skill（Layer 1.5）と同じ「入っていれば使う、
+入っていなければ報告して続行する」という非致命的な位置づけにする。`vuln_scan.py` は
+`osv-scanner` バイナリが見つからない場合、エラーにはせずその旨を報告して exit 0 で抜ける。
+CI ワークフロー側では `vuln-scan` job が毎回バージョン固定（チェックサム検証付き）で
+インストールしてから呼ぶため、CI 上では実質的に必ず実行される。ローカルで開発者が
+`osv-scanner` を任意にインストールしていれば `python3 harness/scripts/vuln_scan.py`
+（または `--app <app-id>`）でそのまま手元でも実行できる（`ci_check.py`・
+`validate_status_transition.py` と同じ「人間/CI 両対応」の設計）。
+
+### スコープと既知の簡略化
+
+- 走査対象は `apps/` 配下のみ。ハーネス自身が使う Python 依存
+  （`harness/requirements.txt` の pyyaml/jsonschema）は対象外
+  （このスキャンは「生成されるアプリ」の依存が対象で、ハーネス自体の保守用依存ではないため）。
+- 機能ごとに独立した worktree（`03-features/<id>/`）や統合後の `04-integration/assembly/` を
+  区別せず、`apps/` 全体を横断的に再帰走査する。feature 境界を意識する必要はない
+  （6節の「入出力さえわかれば内部を知らなくてよい」独立性の原則と整合的）。
+- 脆弱性が1件でも見つかれば `vuln-scan` job は失敗（exit 1）するが、12節と同様に
+  ブランチ保護は設定していないため、現時点ではマージを機械的にブロックはしない
+  （可視化のみ）。深刻度（CVSS）によるしきい値判定や、対応不能な既知の脆弱性を
+  個別に無視するアローリスト機構は v1 では持たない。必要になれば
+  `osv-scanner` 自体の `--config`（`osv-scanner.toml` によるignore設定）を
+  `vuln_scan.py` から渡せるようにする拡張が考えられる（未着手）。
+- Rule 5・8 と同様、CI 実行環境に閉じた話であり、Hook との二重化は行わない
+  （そもそも Hook 側にこのチェックは存在しない）。

@@ -105,11 +105,30 @@ git remote add harness-origin git@github.com:studioyukidaruma-dev/apparness-harn
     非デフォルトブランチでは引き続き検知することをテストで確認済み。
     ブランチ: `harness/fix-ci-branch-attribution`。
 
+- [x] **ライブラリの脆弱性スキャンの自動化**。`npm audit`/`pip-audit`/OSV等を候補として検討し、
+  「どんなアプリでも作れる」という配布ハーネスの前提（アプリのパッケージマネージャは設計フェーズ
+  まで決まらない）から、エコシステム固有の `npm audit`/`pip-audit` を個別に出し分けるのではなく、
+  lockfileの種類を自動判別する [OSV-Scanner](https://github.com/google/osv-scanner) 一本を採用した。
+  `harness/scripts/vuln_scan.py`（`apps/` 配下を再帰走査し `osv-scanner scan source` を実行、
+  結果をJapaneseで要約）と、`.github/workflows/harness-checks.yml` の新ジョブ `vuln-scan`
+  （OSV-Scannerをバージョン固定・SHA256チェックサム検証付きでインストールしてから実行）を追加した。
+  **Hookではなく12節と同じくCIにのみ置いた**: `harness/hooks/*.py` は依存ゼロ・毎ツール呼び出しで
+  起動される決定論レイヤーだが、OSV-Scannerは外部バイナリかつ既定でOSV.devへのネットワーク照会を
+  要するため、Edit/Writeのたびに脆弱性DB照会が走る構成はHook層の前提（低コストで確実に効く）を
+  壊す。`security-review`/`code-review` bundled skill（Layer 1.5、CONVENTIONS.md 10節）と同じ
+  「入っていれば使う、入っていなければ報告して続行する」非致命的な位置づけとし、`osv-scanner`
+  バイナリがPATHに無い場合はエラーにせず報告してexit 0で抜ける（CI側では常にインストールしてから
+  呼ぶため実質的に必ず実行される）。ローカルでも `python3 harness/scripts/vuln_scan.py` で
+  手元実行可能（`ci_check.py` と同じ人間/CI両対応の設計）。実装前にlodashの既知脆弱性を含む
+  ダミーlockfileで実地検証済み（脆弱性検出時exit 1、クリーン時exit 0、apps/未作成時は
+  スキップしてexit 0）。詳細・既知の簡略化（深刻度しきい値やアローリストは v1 では未実装、
+  ブランチ保護未設定のため現状は可視化のみ）は `HARNESS_GUIDE.md` 13節を参照。
+  ブランチ: `harness/vuln-scan-ci`。
+
 ## v1 で着手予定の項目
 
 `HARNESS_GUIDE.md` 11節「既知の制約」に対応する拡張候補。優先度は未定、着手時に相談して決める。
 
-- [ ] ライブラリの脆弱性スキャンの自動化（`npm audit`/`pip-audit`/OSV等をHookやCIに統合）
 - [ ] `find-skills` を用いた専門Skillの自動発見・`required_skills[]` への提案（現状は手動でSkill名を把握してからでないと使えない）
 
 ## 決めていないこと・要相談
