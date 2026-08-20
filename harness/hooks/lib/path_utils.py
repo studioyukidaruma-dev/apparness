@@ -114,13 +114,134 @@ def extract_structured_edit_paths(tool_name: str, tool_input: dict) -> list[str]
     return []
 
 
+def _classify_bash_lines(command: str) -> list[tuple[str, str]]:
+    """`command` を物理行に分け、各行の直後に置くべき区切り文字（`;`/`\\n`/` `）を判定する。
+
+    shlex は改行を単なる空白として読み捨てるため、これに頼ると「改行だけで区切られた
+    複数コマンド」（Claude Code の Bash ツールが渡す複数行スクリプトはこの形が非常に多い）が
+    1つの巨大なセグメントに融合してしまい、`_extract_write_targets_from_segment` が
+    セグメント先頭トークンだけを見て `cp`/`mv`/`tee`/`sed -i` を判定する仕組みが、
+    先頭行以外にあるこれらのコマンドを一切検知できなくなる（実地で `mkdir ...\\ncp ... dst/`
+    という2行スクリプトの `cp` が検知漏れすることを確認して発見した）。
+
+    この関数は、クォート・行継続（末尾 `\\`）・ヒアドキュメント本体を考慮しながら
+    「コマンドの区切りとして使ってよい改行」だけを `;` に変換できるよう分類する:
+    - クォートを跨ぐ改行、ヒアドキュメント本体・終端子直前の改行 → `\\n`（そのまま保持）
+    - 行継続（末尾が奇数個の `\\`）→ ` `（バックスラッシュと改行を単一空白に置換）
+    - それ以外の、通常のコマンド行の末尾の改行 → `;`（区切りとして扱う）
+
+    ヒアドキュメント（`<<EOF` 等）の本体をコマンド境界と誤認しないよう、本体行・終端子行の
+    直後は区切りにしない。終端子行が最後に保留していたヒアドキュメントを閉じたら、その行の
+    直後からは通常のコマンド境界判定を再開する。
+    """
+    lines = command.split("\n")
+    result: list[tuple[str, str]] = []
+    quote: str | None = None  # None / "'" / '"'
+    heredoc_queue: list[str] = []  # 保留中のヒアドキュメント終端子（出現順、複数連結にも対応）
+
+    for line in lines:
+        if heredoc_queue:
+            terminator = heredoc_queue[0]
+            if line.strip() == terminator:
+                heredoc_queue.pop(0)
+                sep = ";" if not heredoc_queue else "\n"
+            else:
+                sep = "\n"
+            result.append((line, sep))
+            continue
+
+        i, n = 0, len(line)
+        found_heredoc = False
+        while i < n:
+            ch = line[i]
+            if quote == "'":
+                if ch == "'":
+                    quote = None
+                i += 1
+                continue
+            if quote == '"':
+                if ch == "\\" and i + 1 < n:
+                    i += 2
+                    continue
+                if ch == '"':
+                    quote = None
+                i += 1
+                continue
+            # クォート外
+            if ch == "\\" and i + 1 < n:
+                i += 2
+                continue
+            if ch in ("'", '"'):
+                quote = ch
+                i += 1
+                continue
+            if ch == "<" and line[i:i + 2] == "<<":
+                j = i + 2
+                if j < n and line[j] == "-":
+                    j += 1
+                while j < n and line[j] in (" ", "\t"):
+                    j += 1
+                delim_quote = line[j] if j < n and line[j] in ("'", '"') else None
+                if delim_quote:
+                    j += 1
+                start = j
+                if delim_quote:
+                    while j < n and line[j] != delim_quote:
+                        j += 1
+                    delimiter = line[start:j]
+                    if j < n:
+                        j += 1
+                else:
+                    while j < n and not line[j].isspace() and line[j] not in ("<", ">", "|", "&", ";"):
+                        j += 1
+                    delimiter = line[start:j]
+                if delimiter:
+                    heredoc_queue.append(delimiter)
+                    found_heredoc = True
+                i = j
+                continue
+            i += 1
+
+        # 末尾の連続する `\` の個数が奇数なら行継続（最後の1つが改行をエスケープする）
+        trailing = len(line) - len(line.rstrip("\\"))
+        line_continuation = quote is None and trailing % 2 == 1
+
+        if quote is not None:
+            sep = "\n"
+        elif line_continuation:
+            line = line[:-1]  # 継続用のバックスラッシュを落とす
+            sep = " "
+        elif found_heredoc or heredoc_queue:
+            sep = "\n"
+        else:
+            sep = ";"
+        result.append((line, sep))
+
+    return result
+
+
+def _normalize_bash_newlines(command: str) -> str:
+    """`_classify_bash_lines` の分類に従い、コマンド境界として扱ってよい改行だけを `;` に
+    変換した文字列を返す（トークン化前の前処理）。"""
+    classified = _classify_bash_lines(command)
+    parts: list[str] = []
+    for idx, (line, sep) in enumerate(classified):
+        parts.append(line)
+        if idx < len(classified) - 1:
+            parts.append(sep)
+    return "".join(parts)
+
+
 def _tokenize_bash_command(command: str) -> list[str] | None:
     """command を shlex でクォートを尊重してトークン化する。posix モードなのでクォートは
     剥がされ、クォート内の記号（`>` 等）は独立したトークンにならず語の一部として扱われる。
+    トークン化の前に `_normalize_bash_newlines` で改行をコマンド境界（`;`）に正規化するため、
+    複数行スクリプトの各行が独立したセグメントとして扱われる。
     クォート不整合等でトークン化できない場合は None を返す（判定不能として安全側＝許可に倒す）。
     """
     try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+        normalized = _normalize_bash_newlines(command)
+        lexer = shlex.shlex(normalized, posix=True, punctuation_chars=True)
         lexer.whitespace_split = True
         return list(lexer)
     except ValueError:
