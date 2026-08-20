@@ -111,7 +111,8 @@ NOT_STARTED → CONTRACT_DRAFTED → CONTRACT_APPROVED → IN_PROGRESS → IMPLE
 
 ## 7. Hooks が強制する 9 ルール（詳細は `harness/hooks/pre_tool_use_guard.py`・`stop_commit_guard.py` 参照）
 
-1. **ハーネス非侵襲性**: `harness/**` と `.claude/**`（リポジトリルート直下）への書き込みは、
+1. **ハーネス非侵襲性**: `harness/**`・`.claude/**`・`.github/**`（いずれもリポジトリルート直下。
+   `.github/workflows/` は CI 設定であり、これも「ハーネス本体」の一部として保護する）への書き込みは、
    現在のブランチが `harness/` プレフィックスでない限り拒否する。ただし `.claude/settings.local.json`
    （gitignore 対象の個人ローカル設定。`/plugin install <name> --scope local` 等が書き込む）は
    チームに共有されないため対象外とする。Skill を「プロジェクト全体に強制する」のではなく

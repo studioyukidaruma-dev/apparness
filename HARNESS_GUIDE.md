@@ -19,6 +19,7 @@
 9. [品質保証の二層構造](#9-品質保証の二層構造)
 10. [自動化モード（AUTONOMY.yaml）](#10-自動化モードautonomyyaml)
 11. [既知の制約・v1以降の拡張候補](#11-既知の制約v1以降の拡張候補)
+12. [CI連携（サーバーサイド二重チェック）](#12-ci連携サーバーサイド二重チェック)
 
 ---
 
@@ -251,7 +252,7 @@ sequenceDiagram
 
 | # | ルール名 | 何を見るか | ブロック条件 |
 |---|---|---|---|
-| 1 | ハーネス非侵襲性 | `harness/**`, `.claude/**` への書き込み | 現在のブランチが `harness/` プレフィックスでない（`.claude/settings.local.json` は例外） |
+| 1 | ハーネス非侵襲性 | `harness/**`, `.claude/**`, `.github/**` への書き込み | 現在のブランチが `harness/` プレフィックスでない（`.claude/settings.local.json` は例外） |
 | 2 | 担当外ガード | `03-features/<id>/**`（`status.yaml`除く） | 現在の worktree のルート basename が `<id>` と不一致 |
 | 3 | 契約凍結 | `contract.yaml` | 対応する `status.yaml` の `state` が `CONTRACT_DRAFTED` を超えている |
 | 4 | 進捗自動再生成 | `status.yaml` の更新（PostToolUse） | 常に非ブロッキングで `render_progress.py` を実行 |
@@ -385,7 +386,7 @@ git worktree は同一リポジトリの追跡ファイルをそのままチェ�
 
 ### ブランチによる制限（Rule 1 との関係）
 
-| 現在のブランチ | `harness/**`・`.claude/**` への書き込み |
+| 現在のブランチ | `harness/**`・`.claude/**`・`.github/**` への書き込み |
 |---|---|
 | `main` またはその他 | ❌ 拒否（`HARNESS_UNLOCK=1` で一時解除可能） |
 | `harness/<topic>` | ✅ 許可 |
@@ -433,8 +434,9 @@ graph TD
 
 ## 11. 既知の制約・v1以降の拡張候補
 
-- CI（GitHub Actions等）との連携は範囲外。Claude Code Hooksのみで完結させている
 - ライブラリの脆弱性スキャンは自動化されておらず、`solution-architect` の調査と `security-review` skill に依存
+- CI（12節）はアプリの技術スタックに依存しない範囲の再検証に留まる。feature-builder/integrator が
+  書く単体・結合テストの自動実行はアプリごとに技術スタックが異なるため範囲外（各アプリ側で用意する）
 - Rule 9（status.yaml状態遷移チェック）は `BLOCKED` を経由した遷移を検証しない。`BLOCKED` からは
   どの状態へも自由に遷移できてしまうため、理論上は `BLOCKED` を経由して直線状態の飛び越しチェックを
   すり抜けられる（`state_history[]` を遡って直前の実質的なレベルを復元すれば厳密化できるが、
@@ -462,3 +464,73 @@ graph TD
   指摘を受けて撤回し、代わりに検知ロジック自体を `shlex` によるクォート考慮トークン化に置き換えて
   誤検知の原因（クォート内の `>` を演算子と誤認識すること）を解消した。バイパス用の環境変数は
   存在しない（`HARNESS_UNLOCK=1` は Rule 1 専用のまま）
+- CI連携（GitHub Actions）。詳細は12節
+
+---
+
+## 12. CI連携（サーバーサイド二重チェック）
+
+`harness/hooks/*.py` の Hook は **Claude Code のセッション内でのみ**効く。人間が直接
+`git commit` したり、Claude Code を経由しない別ツールで編集した場合はすり抜けられる。
+複数人での共有・配布を前提にすると、「Claude Codeを使った人だけが規約を守る」という状態は
+避けたい。そこで `.github/workflows/harness-checks.yml` が `harness/scripts/ci_check.py` を
+push・pull_request のたびに実行し、git リポジトリの最終状態（および比較対象コミットとの差分）
+に対して Hook ルールの一部を**サーバーサイドで再検証**する。
+
+```mermaid
+flowchart LR
+    subgraph LOCAL["ローカル（Claude Codeセッション内のみ有効）"]
+        HOOK["pre_tool_use_guard.py 等<br/>ツール呼び出しの直前に判定"]
+    end
+    subgraph SERVER["CI（誰が・どう編集したかによらず有効）"]
+        CI["ci_check.py<br/>push/PRごとにgit状態を再判定"]
+    end
+    DEV["開発者 or AI"] -->|Claude Code経由| HOOK
+    DEV -->|直接git commit等、Claude Code非経由| SKIP["Hookをすり抜ける"]
+    HOOK --> PUSH["git push"]
+    SKIP --> PUSH
+    PUSH --> CI
+    style SKIP fill:#f8d7da,stroke:#333
+```
+
+### なぜ「アプリの技術スタックに依存しない範囲」に限定するか
+
+このハーネスは「どんなアプリでも作れる」ことを前提にしており、`apps/` を含まない
+`apparness-harness` リポジトリとして配布される（`scripts/sync-harness-template.sh`）。
+配布時点でアプリの中身は空なので、feature-builder/integrator が書く単体・結合テスト
+（npm test / pytest / go test 等、アプリごとに異なる）を実行する仕組みはテンプレート側に
+汎用的に組み込めない。そのため v1 では、**アプリのスタックを問わずに再検証できるもの**
+（YAML/JSON Schema・Hookのルール群・進捗ファイルの鮮度）に絞っている。
+
+### チェック内容
+
+`harness/scripts/ci_check.py` が行うチェックと、対応する Hook Rule（7節）:
+
+| # | チェック内容 | 対応する Hook Rule | 判定方法 |
+|---|---|---|---|
+| A | machine-readable YAML の JSON Schema 検証 | （Hookでは未実施。`validate_yaml.py` を各subagentがBashで手動実行する運用だったものをCIで機械化） | `harness/schemas/*.json` に対して `jsonschema` で検証 |
+| B | `harness/**`・`.claude/**`・`.github/**` への変更は `harness/<topic>` ブランチでのみ許可 | Rule 1 | 比較対象コミットとの `git diff --name-status` とブランチ名 |
+| C | `feature/<app>/<feature-id>` ブランチは自分の機能ディレクトリ（と任意featureの`status.yaml`）以外を変更できない | Rule 2 / Rule 6 | 同上 |
+| D | `contract.yaml` の変更は、対応する状態が凍結ライン未満のときのみ許可 | Rule 3 | 変更ファイル一覧 + 現在の `status.yaml`/`architecture.machine.yaml` |
+| E | `architecture.machine.yaml` が `status: APPROVED` のとき `based_on_requirements_version` が一致 | Rule 7 | 最終状態のみで判定（diff不要） |
+| F | `status.yaml` の `state` 遷移の妥当性 | Rule 9 | 比較対象コミットの旧内容（`git show`）と現在の内容 |
+| G | `PROGRESS.md`/`STATE.machine.yaml` が `render_progress.py` の出力と一致（鮮度） | （Rule 4 のPostToolUse自動再生成を経ずにコミットされていないか） | `render_progress.py` を実行して差分比較（生成日時行は除外） |
+
+Rule 5（必須Skillの充足）は CI 実行環境に Skill 有効化状態という概念が存在しないため、
+Rule 8（フェーズ節目のコミット強制）は push された時点で既に全てコミット済みのため、
+それぞれ再検証の対象外（再検証しても意味がない）。
+
+### 判定ロジックの実体はHookと共有
+
+`ci_check.py` は `harness/hooks/lib/path_utils.py` の `validate_status_transition`・
+`extract_scalar_field`・`read_state_field` をそのまま import して使う（`hooks/` は依存ゼロの
+ため、`scripts/` 側から import しても安全。逆方向——`hooks/` が `scripts/_common.py` 等の
+PyYAML依存コードを import すること——は禁止のまま）。これにより、ローカルのHookとCIの
+判定基準がズレることを防いでいる。
+
+### トリガーとブランチ保護
+
+`.github/workflows/harness-checks.yml` は `push`（全ブランチ）と `pull_request` の両方で
+起動する。**現時点ではブランチ保護ルール（CI成功をマージ必須にする）は設定していない**
+（GitHub側のリポジトリ設定変更は影響範囲が大きいため、可視化のみに留めている。必須化したい
+場合は別途相談）。

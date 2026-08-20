@@ -81,17 +81,32 @@ git remote add harness-origin git@github.com:studioyukidaruma-dev/apparness-harn
     原因（クォート内の `>` を演算子と誤認識すること）を根本的に解消した。バイパス用の環境変数は
     削除し、存在しない（`HARNESS_UNLOCK=1` は Rule 1 専用のまま維持）。18パターン
     （真陽性10・真陰性8）のテストで検証済み。ブランチ: `harness/fix-bash-guard-tokenizer`。
+- [x] **CI連携（GitHub Actions）**。着手前に「配布ハーネスとしてアプリの素性がわからない状態でも
+  意味があるCIか」を検討し、feature-builder/integrator が書くアプリ固有のテスト実行（技術スタック
+  依存のため汎用化できない）は対象外とし、代わりに **Hookが課しているルールのうちアプリの技術
+  スタックに依存しない範囲をgitの最終状態に対してサーバーサイドで再検証する**という方向にスコープを
+  絞った。`harness/scripts/ci_check.py`（YAML Schema検証 + Rule 1/2/3/6/7/9相当の再検証 +
+  PROGRESS.md鮮度チェック）と `.github/workflows/harness-checks.yml`（push全ブランチ + PR で起動、
+  ブランチ保護は未設定で可視化のみ）を追加した（`HARNESS_GUIDE.md` 12節）。判定ロジックは
+  `harness/hooks/lib/path_utils.py` をHookと共有し、基準のズレを防いでいる。ついでに `.github/**`
+  もRule 1（ハーネス非侵襲性）のガード対象に追加した。10シナリオのテストで検証済み。
+  ブランチ: `harness/ci-deterministic-checks`。
+  **今後の課題**: Rule 5（必須Skill充足）とRule 8（コミット強制）はCIでは再検証できない
+  （前者はCI実行環境にSkill有効化状態が存在せず、後者はpush時点で既にコミット済みのため）。
+  アプリ固有のテスト実行をCIに載せたくなったら、「各機能に統一エントリポイント
+  （例: `run_tests.sh`）を置く」という新しい規約をCONVENTIONS.mdに追加すれば、CI側は
+  スタック非依存のまま対応できる（未着手）。
 
 ## v1 で着手予定の項目
 
 `HARNESS_GUIDE.md` 11節「既知の制約」に対応する拡張候補。優先度は未定、着手時に相談して決める。
 
-- [ ] **CI連携**（今回の会話で最初に挙がった項目）。GitHub Actions等で、`feature-builder`/`integrator` が書く結合テスト・単体テストを push/PR のたびに自動実行する仕組み。現状は Claude Code Hooks のみで完結させている
 - [ ] ライブラリの脆弱性スキャンの自動化（`npm audit`/`pip-audit`/OSV等をHookやCIに統合）
 - [ ] `find-skills` を用いた専門Skillの自動発見・`required_skills[]` への提案（現状は手動でSkill名を把握してからでないと使えない）
 
 ## 決めていないこと・要相談
 
 - v1着手の優先順位
-- CIをどのCIサービスにするか（GitHub Actions前提で書いたが未確定）
 - `apparness-harness` 側にREADMEとして何を追加すべきか（現状は `apparness` と同じREADME.mdをそのまま使っている）
+- CIにブランチ保護ルール（成功必須化）を設定するかどうか（現状は可視化のみ）
+- アプリ固有のテスト実行をCIに載せる場合の統一エントリポイント規約（`run_tests.sh`等）をどう設計するか

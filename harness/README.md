@@ -81,14 +81,24 @@ PyYAML / jsonschema を使います。）
 ## Hooks が強制する約束事項
 
 `CONVENTIONS.md` 7 節を参照。ハーネス非侵襲性・担当外ガード・契約凍結・進捗自動再生成・
-必須Skillの充足ゲート・上位文書ガード・要件↔設計の整合性ゲートの 7 つを Claude Code の
-PreToolUse / PostToolUse hooks で強制しています。AI の自己申告には頼っていません。
+必須Skillの充足ゲート・上位文書ガード・要件↔設計の整合性ゲート・フェーズ節目のコミット強制・
+状態遷移の妥当性チェックの 9 つを Claude Code の PreToolUse / PostToolUse / Stop / SubagentStop
+hooks で強制しています。Bash 経由の間接的な書き込みも対象範囲内でブロックします。AI の自己申告には
+頼っていません。
 
-## 既知の制約（v0 スコープ）
+## CI 連携
 
-- Bash 経由の間接的な書き込み（`sed -i` 等）は検知しても警告のみで、ブロックしません。
-- 状態遷移（`status.yaml` の `state`）の妥当性チェックはまだありません。
-- CI との連携はまだありません（Claude Code Hooks のみで完結させています）。
+`.github/workflows/harness-checks.yml` が、上記 Hook のうち Claude Code のセッション外
+（人間が直接 `git commit` する等）でもすり抜けられては困るものを、push/PR のたびに
+`harness/scripts/ci_check.py` でサーバーサイド再検証します。詳細は `HARNESS_GUIDE.md` 12節。
+
+## 既知の制約
+
+- 状態遷移チェックは `BLOCKED` を経由した遷移までは検証しません。
+- Bash 経由の書き込み検知は変数展開されたパス等の検知漏れが残ります（誤検知はクォート考慮の
+  トークン化で解消済み）。
+- CI はアプリの技術スタックに依存しない範囲のみが対象で、feature-builder/integrator が書く
+  アプリ固有のテスト実行は含みません。
 - ライブラリの脆弱性スキャンは自動化されておらず、`solution-architect` の調査と `security-review`
   skill（利用可能な場合）に依存しています。
 

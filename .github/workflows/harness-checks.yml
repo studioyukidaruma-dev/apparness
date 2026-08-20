@@ -1,0 +1,38 @@
+name: harness-checks
+
+# harness/CONVENTIONS.md 7節の Hook ルールのうち、アプリの技術スタックに依存しない範囲を
+# git リポジトリの最終状態に対してサーバーサイドで再検証する。
+# 詳細は harness/scripts/ci_check.py のモジュール docstring を参照。
+#
+# feature-builder/integrator が書く単体・結合テストの実行はアプリごとの技術スタックに
+# 依存するためこのワークフローの対象外（各アプリ側で用意する）。
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  ci-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r harness/requirements.txt
+
+      - name: ハーネス規約の決定論チェック
+        env:
+          CI_BRANCH: ${{ github.head_ref || github.ref_name }}
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -z "${CI_BASE_SHA}" ] || [ "${CI_BASE_SHA}" = "0000000000000000000000000000000000000000" ]; then
+            python3 harness/scripts/ci_check.py --branch "${CI_BRANCH}"
+          else
+            python3 harness/scripts/ci_check.py --branch "${CI_BRANCH}" --base "${CI_BASE_SHA}"
+          fi

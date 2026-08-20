@@ -19,7 +19,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
 import path_utils  # noqa: E402
 
-HARNESS_PATH_RE = re.compile(r"^(harness/|\.claude/)")
+HARNESS_PATH_RE = re.compile(r"^(harness/|\.claude/|\.github/)")
 # 個人のローカル設定（gitignore 対象、チームに共有されない）はハーネス非侵襲性の対象外。
 # 例: `/plugin install <name> --scope local` は .claude/settings.local.json に書き込む。
 HARNESS_PATH_EXEMPT_RE = re.compile(r"^\.claude/settings\.local\.json$")
