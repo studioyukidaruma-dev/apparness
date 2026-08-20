@@ -57,6 +57,15 @@ git remote add harness-origin git@github.com:studioyukidaruma-dev/apparness-harn
   終えようとした場合に停止をブロックするようにした（`CONVENTIONS.md` 7節 Rule 8、
   `HARNESS_GUIDE.md` 5節）。`Stop`/`SubagentStop` 用に `stop_hook_active` を見て無限ループを回避。
   ブランチ: `harness/stop-commit-guard`。
+- [x] **`status.yaml` の状態遷移の妥当性チェック**。判定ロジックを
+  `harness/hooks/lib/path_utils.py` の `validate_status_transition` に実装し、
+  `pre_tool_use_guard.py`（Rule 9）が Edit/Write/MultiEdit のたびに自動で強制する。
+  直線状態（`NOT_STARTED → ... → INTEGRATED`）の後退・複数段階の飛び越しと、終端状態
+  （`INTEGRATED`/`SUPERSEDED`）からの変更を拒否する。人間/CI向けの手動確認 CLI として
+  `harness/scripts/validate_status_transition.py` も追加した（`CONVENTIONS.md` 5節・7節 Rule 9）。
+  **既知の簡略化**: `BLOCKED` を経由した遷移は検証しない（`BLOCKED` からはどの状態へも自由に
+  遷移できるため、理論上は飛び越しチェックをすり抜けられる。`HARNESS_GUIDE.md` 11節参照）。
+  ブランチ: `harness/status-transition-guard`。
 
 ## v1 で着手予定の項目
 
@@ -64,7 +73,6 @@ git remote add harness-origin git@github.com:studioyukidaruma-dev/apparness-harn
 
 - [ ] **CI連携**（今回の会話で最初に挙がった項目）。GitHub Actions等で、`feature-builder`/`integrator` が書く結合テスト・単体テストを push/PR のたびに自動実行する仕組み。現状は Claude Code Hooks のみで完結させている
 - [ ] Bash 経由の間接的な書き込み（`sed -i` 等）を警告だけでなく実際にブロックする（誤検知リスクとのトレードオフを検討）
-- [ ] `status.yaml` の状態遷移の妥当性チェック（`NOT_STARTED` からいきなり `INTEGRATED` にする、等を防ぐ）
 - [ ] ライブラリの脆弱性スキャンの自動化（`npm audit`/`pip-audit`/OSV等をHookやCIに統合）
 - [ ] `find-skills` を用いた専門Skillの自動発見・`required_skills[]` への提案（現状は手動でSkill名を把握してからでないと使えない）
 

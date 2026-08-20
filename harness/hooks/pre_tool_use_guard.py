@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PreToolUse hook: harness/CONVENTIONS.md 7節の Rule 1〜7 を強制する。
+"""PreToolUse hook: harness/CONVENTIONS.md 7節の Rule 1〜3, 5〜7, 9 を強制する（Rule 4/8 は別 hook）。
 **依存ゼロ**（標準ライブラリのみ）。Edit/Write/MultiEdit/NotebookEdit は確実にブロックする。
 Bash 経由の間接書き込みは v0 では警告のみで非ブロック（誤検知回避のため）。
 
@@ -24,6 +24,7 @@ DESIGN_CONTRACT_RE = re.compile(r"^apps/([^/]+)/02-design/features/([^/]+)\.cont
 FEATURE_SRC_RE = re.compile(r"^apps/([^/]+)/03-features/([^/]+)/src/")
 APP_UPSTREAM_DOC_RE = re.compile(r"^apps/([^/]+)/(00-requirements|01-foundation|02-design)/")
 ARCHITECTURE_RE = re.compile(r"^apps/([^/]+)/02-design/architecture\.machine\.yaml$")
+STATUS_YAML_RE = re.compile(r"^apps/([^/]+)/03-features/([^/]+)/status\.yaml$")
 
 
 def check_rule1_harness_immutability(rel_path: str, cwd: str) -> str | None:
@@ -144,6 +145,24 @@ def check_rule7_requirements_consistency(rel_path: str, tool_name: str, tool_inp
     return None
 
 
+def check_rule9_status_transition(rel_path: str, tool_name: str, tool_input: dict, toplevel: str) -> str | None:
+    m = STATUS_YAML_RE.match(rel_path)
+    if not m:
+        return None
+    status_path = os.path.join(toplevel, rel_path)
+    try:
+        with open(status_path, "r", encoding="utf-8") as f:
+            current_content = f.read()
+    except OSError:
+        return None  # 新規作成（旧状態なし）は判定不能として許可する
+    old_state = path_utils.extract_scalar_field(current_content, "state")
+    new_content = path_utils.simulate_write_result(tool_name, tool_input, current_content)
+    new_state = path_utils.extract_scalar_field(new_content, "state")
+    if new_state is None:
+        return None
+    return path_utils.validate_status_transition(old_state, new_state)
+
+
 def check_rule3_contract_freeze(rel_path: str, toplevel: str) -> str | None:
     m = FEATURE_CONTRACT_RE.match(rel_path)
     if m:
@@ -187,6 +206,9 @@ def run_checks(
         return reason
     if tool_name in ("Edit", "Write", "MultiEdit"):
         reason = check_rule7_requirements_consistency(rel_path, tool_name, tool_input, toplevel)
+        if reason:
+            return reason
+        reason = check_rule9_status_transition(rel_path, tool_name, tool_input, toplevel)
         if reason:
             return reason
     return None

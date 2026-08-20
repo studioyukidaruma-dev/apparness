@@ -11,6 +11,20 @@ import sys
 MULTI_EDIT_FILE_FIELD = "file_path"
 NOTEBOOK_EDIT_FIELD = "notebook_path"
 
+# schemas/status.schema.json の state enum と対応。CONVENTIONS.md 5節の状態機械の単一情報源はここではなく
+# CONVENTIONS.md 側だが、値の並びはこの定数と一致させること。
+STATUS_LINEAR_ORDER = [
+    "NOT_STARTED",
+    "CONTRACT_DRAFTED",
+    "CONTRACT_APPROVED",
+    "IN_PROGRESS",
+    "IMPLEMENTED",
+    "TESTED",
+    "INTEGRATED",
+]
+STATUS_TERMINAL_STATES = {"INTEGRATED", "SUPERSEDED"}
+STATUS_ALL_STATES = set(STATUS_LINEAR_ORDER) | {"BLOCKED", "SUPERSEDED"}
+
 # Bash からの間接書き込みをヒューリスティックに検知するための簡易パターン（v0: 警告のみ、非ブロック）
 _BASH_WRITE_PATTERNS = [
     re.compile(r">>?\s*([^\s|;&]+)"),
@@ -169,6 +183,39 @@ def extract_scalar_field(content: str, key: str) -> str | None:
     if not m:
         return None
     return m.group(1).strip().strip('"\'')
+
+
+def validate_status_transition(old_state: str | None, new_state: str) -> str | None:
+    """status.yaml の `state` 遷移が CONVENTIONS.md 5節の状態機械に沿っているか判定する。
+    妥当（または判定不能）なら None、不正なら拒否理由の文字列を返す。
+
+    - `BLOCKED` はどの非終端状態からでも／どの状態へでも自由に出入りできる「一時停止」として扱う
+      （どのレベルで止まっていたかは `state_history` を遡れば分かるが、v1 ではそこまで検証しない。
+      既知の簡略化として、`BLOCKED` を経由した skip はすり抜けうる）。
+    - `SUPERSEDED` はどの非終端状態からでも許可する（`diff-design` による置き換えはいつでも起こりうる）。
+    - それ以外は `STATUS_LINEAR_ORDER` に沿った1段階前進のみ許可する。後退・複数段階の飛び越しは拒否する。
+    """
+    if not old_state or old_state == new_state:
+        return None
+    if new_state not in STATUS_ALL_STATES or old_state not in STATUS_ALL_STATES:
+        return None  # 未知の値の妥当性は JSON Schema 側の責務。ここでは判定しない
+    if old_state in STATUS_TERMINAL_STATES:
+        return f"拒否: state は {old_state}（終端状態）から変更できません。"
+    if new_state in ("SUPERSEDED", "BLOCKED") or old_state == "BLOCKED":
+        return None
+
+    old_idx = STATUS_LINEAR_ORDER.index(old_state)
+    new_idx = STATUS_LINEAR_ORDER.index(new_state)
+    if new_idx == old_idx + 1:
+        return None
+    if new_idx <= old_idx:
+        return f"拒否: state を {old_state} から {new_state} に後退させることはできません。"
+    skipped = ", ".join(STATUS_LINEAR_ORDER[old_idx + 1:new_idx])
+    return (
+        f"拒否: state を {old_state} から {new_state} へ直接進めることはできません"
+        f"（{skipped} を飛ばしています）。1段階ずつ進めてください"
+        f"（`CONTRACT_APPROVED` へ進めない場合は `BLOCKED` にして `blockers[]` に理由を記録してください）。"
+    )
 
 
 def extract_required_skills(content: str) -> list[dict]:

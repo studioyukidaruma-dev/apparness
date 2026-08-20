@@ -12,7 +12,7 @@
 2. [全体像（ディレクトリマップ）](#2-全体像ディレクトリマップ)
 3. [ワークフロー全体図](#3-ワークフロー全体図)
 4. [フェーズ詳細](#4-フェーズ詳細)
-5. [Hooks が強制する8つのルール（決定論レイヤー）](#5-hooks-が強制する8つのルール決定論レイヤー)
+5. [Hooks が強制する9つのルール（決定論レイヤー）](#5-hooks-が強制する9つのルール決定論レイヤー)
 6. [コンテキスト消費マップ](#6-コンテキスト消費マップ)
 7. [決定論 vs AI判断 対照表](#7-決定論-vs-ai判断-対照表)
 8. [ブランチ・worktree 運用とその制限](#8-ブランチworktree-運用とその制限)
@@ -209,7 +209,7 @@ flowchart TD
 
 ---
 
-## 5. Hooks が強制する8つのルール（決定論レイヤー）
+## 5. Hooks が強制する9つのルール（決定論レイヤー）
 
 `harness/hooks/pre_tool_use_guard.py`（PreToolUse）・`post_tool_use_sync.py`（PostToolUse）・`stop_commit_guard.py`（Stop/SubagentStop）で実装。**依存ゼロの標準ライブラリのみ**で動作し、ツール呼び出し・応答終了のたびに毎回起動されます。
 
@@ -226,6 +226,7 @@ sequenceDiagram
     Hook->>Hook: Rule5 必須Skill充足チェック
     Hook->>Hook: Rule3 契約凍結チェック
     Hook->>Hook: Rule7 要件↔設計整合性チェック
+    Hook->>Hook: Rule9 status.yaml状態遷移チェック
     alt いずれかで違反
         Hook-->>Agent: exit 2 + stderr理由（ブロック）
     else すべて通過
@@ -257,8 +258,9 @@ sequenceDiagram
 | 6 | 上位文書ガード | feature用worktreeからの `00-requirements/`・`01-foundation/`・`02-design/` | 常にブロック（メインworktreeからは対象外） |
 | 7 | 要件↔設計整合性 | `architecture.machine.yaml` を `APPROVED` にする書き込み | `based_on_requirements_version` ≠ `requirements.machine.yaml` の現在の `version` |
 | 8 | フェーズ節目のコミット強制 | `status.yaml`/`requirements.machine.yaml`/`architecture.machine.yaml`（Stop/SubagentStop） | いずれかが `git status --porcelain --untracked-files=all` で未コミット |
+| 9 | 状態遷移の妥当性チェック | `status.yaml` の `state` 書き換え | 書き込み前後の `state` が妥当な遷移でない（直線状態の後退・複数段階の飛び越し、終端状態からの変更） |
 
-v0では **Edit/Write/MultiEdit/NotebookEdit のみ確実にブロック**します。Bash 経由の間接書き込み（`sed -i` 等）は検知しても警告のみで、実行は止めません（誤検知でBash全体を止める体験悪化を避けるため）。Rule 8 は例外的に `Stop`/`SubagentStop` イベントで動作し、ツール呼び出しではなく応答終了そのものをブロックします。
+v0では **Edit/Write/MultiEdit/NotebookEdit のみ確実にブロック**します。Bash 経由の間接書き込み（`sed -i` 等）は検知しても警告のみで、実行は止めません（誤検知でBash全体を止める体験悪化を避けるため）。Rule 8 は例外的に `Stop`/`SubagentStop` イベントで動作し、ツール呼び出しではなく応答終了そのものをブロックします。Rule 9 は `BLOCKED` を経由した遷移は検証せず自由に通す既知の簡略化があります（11節）。
 
 ---
 
@@ -327,6 +329,7 @@ graph LR
 | 必須Skillが無い実装のブロック | ✅ Rule 5 | — |
 | feature-builderの要件/設計への書き込み拒否 | ✅ Rule 6 | — |
 | 要件と設計のバージョン不整合を APPROVED にさせない | ✅ Rule 7 | — |
+| status.yaml の state 遷移の妥当性（飛び越し・後退・終端状態からの変更） | ✅ Rule 9（`BLOCKED` 経由は除く） | ⚠️ `BLOCKED` を経由した場合のみ実質的なレベル妥当性はAI判断依存 |
 | `approved_by`/`approved_at` の未入力での承認防止 | ✅ JSON Schema `if/then` | — |
 | YAML/JSON構文・スキーマ適合の検証 | ✅ `validate_yaml.py` | — |
 | worktree・雛形ファイルの生成 | ✅ `new_app_scaffold.py`/`new_feature_scaffold.py` | — |
@@ -430,12 +433,20 @@ graph TD
 ## 11. 既知の制約・v1以降の拡張候補
 
 - Bash 経由の間接書き込みはブロックされず警告のみ（誤検知でBash全体を止める体験悪化を避けるため）
-- `status.yaml` の状態遷移（例: `NOT_STARTED` → いきなり `INTEGRATED`）の妥当性チェックは未実装
 - CI（GitHub Actions等）との連携は範囲外。Claude Code Hooksのみで完結させている
 - ライブラリの脆弱性スキャンは自動化されておらず、`solution-architect` の調査と `security-review` skill に依存
+- Rule 9（status.yaml状態遷移チェック）は `BLOCKED` を経由した遷移を検証しない。`BLOCKED` からは
+  どの状態へも自由に遷移できてしまうため、理論上は `BLOCKED` を経由して直線状態の飛び越しチェックを
+  すり抜けられる（`state_history[]` を遡って直前の実質的なレベルを復元すれば厳密化できるが、
+  v1 ではそこまで行っていない）
 
 これらは実際にアプリを1本作ってみてから、必要に応じて拡張する方針です。
 
-**v1 で対応済み**: 各フェーズでのコミット実行（`status.yaml`/`requirements.machine.yaml`/
-`architecture.machine.yaml` の未コミット変更を残したまま応答を終えることを `Stop`/`SubagentStop`
-フック（`stop_commit_guard.py`、5節 Rule 8）でブロックする仕組み）。
+**v1 で対応済み**:
+- 各フェーズでのコミット実行（`status.yaml`/`requirements.machine.yaml`/
+  `architecture.machine.yaml` の未コミット変更を残したまま応答を終えることを `Stop`/`SubagentStop`
+  フック（`stop_commit_guard.py`、5節 Rule 8）でブロックする仕組み）
+- `status.yaml` の状態遷移の妥当性チェック（`NOT_STARTED` からいきなり `INTEGRATED` にする、
+  `CONTRACT_APPROVED` から `NOT_STARTED` に後退させる、といった書き込みを `PreToolUse` フック
+  （5節 Rule 9、`path_utils.validate_status_transition`）でブロックする仕組み。上記の
+  `BLOCKED` 経由の抜け穴を除く）

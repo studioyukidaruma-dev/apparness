@@ -83,8 +83,21 @@ NOT_STARTED → CONTRACT_DRAFTED → CONTRACT_APPROVED → IN_PROGRESS → IMPLE
 - `BLOCKED`: 何らかの理由で作業が止まっている（`blockers[]` に理由を記録）
 - `SUPERSEDED`: 仕様変更により後継の feature-id に置き換えられた（`superseded_by` に後継 ID を記録）
 
-状態遷移は基本的に前進のみを想定します（v0 では遷移の妥当性チェックは行いません。v1 で
-`scripts/validate_status_transition.py` を追加予定）。
+状態遷移は基本的に前進のみを許可し、`PreToolUse` フック（7節 Rule 9）が機械的に強制します
+（例: `NOT_STARTED` からいきなり `INTEGRATED` にする、`CONTRACT_APPROVED` から `NOT_STARTED` に
+後退させる、といった書き込みは拒否されます）。
+
+- 直線状態（上記の矢印の並び）は1段階前進のみ許可。後退・複数段階の飛び越しは拒否する。
+- `INTEGRATED`/`SUPERSEDED` は終端状態で、そこからの変更は一切拒否する。
+- `BLOCKED` への／からの遷移はどの非終端状態からでも／どの状態へでも自由に許可する
+  （どのレベルで止まっていたかによらない「一時停止」として扱う。**既知の簡略化**として、
+  `BLOCKED` を経由すれば直線状態の飛び越しチェックをすり抜けられる。厳密な検証には
+  `state_history[]` を遡って直前の実質的な状態を復元する必要があるが、v1 ではそこまでは行わない）。
+- `SUPERSEDED` への遷移はどの非終端状態からでも許可する（`diff-design` による置き換えはいつでも
+  起こりうるため）。
+
+判定の実体は `harness/hooks/lib/path_utils.py` の `validate_status_transition`。
+`harness/scripts/validate_status_transition.py` は同じロジックを呼ぶ、人間/CI向けの手動確認 CLI。
 
 ## 6. 「独立機能」の設計原則
 
@@ -96,7 +109,7 @@ NOT_STARTED → CONTRACT_DRAFTED → CONTRACT_APPROVED → IN_PROGRESS → IMPLE
 全機能が共通で依存してよいものは `01-foundation/shared-kernel.yaml`
 （DDD でいう Shared Kernel）に限定し、機能ごとの `contract.yaml` から参照します。
 
-## 7. Hooks が強制する 8 ルール（詳細は `harness/hooks/pre_tool_use_guard.py`・`stop_commit_guard.py` 参照）
+## 7. Hooks が強制する 9 ルール（詳細は `harness/hooks/pre_tool_use_guard.py`・`stop_commit_guard.py` 参照）
 
 1. **ハーネス非侵襲性**: `harness/**` と `.claude/**`（リポジトリルート直下）への書き込みは、
    現在のブランチが `harness/` プレフィックスでない限り拒否する。ただし `.claude/settings.local.json`
@@ -130,6 +143,10 @@ NOT_STARTED → CONTRACT_DRAFTED → CONTRACT_APPROVED → IN_PROGRESS → IMPLE
    各 subagent のプロンプトは「状態を進めるたびに `git add -A && git commit` する」と指示しているが、
    実地テストでコミット漏れが実際に発生したため、決定論的に強制する。無限ループ回避のため、
    Claude Code が渡す `stop_hook_active` が真の場合は判定をスキップして通す。
+9. **状態遷移の妥当性チェック**: `status.yaml` への書き込みは、書き込み後の `state` が
+   書き込み前の `state` から見て妥当な遷移でない限り拒否する（5節）。`NOT_STARTED` からいきなり
+   `INTEGRATED` にする、`CONTRACT_APPROVED` から `NOT_STARTED` に後退させる、といった書き込みを
+   機械的に防ぐ。判定ロジックは `path_utils.validate_status_transition`。
 
 v0 では Edit/Write/MultiEdit/NotebookEdit という構造化ツール呼び出しのみを確実にブロックします。
 Bash 経由の間接的な書き込み（`sed -i` 等）は検知しても警告のみで、ブロックはしません
