@@ -2,7 +2,12 @@
 
 このリポジトリ（`apparness`）に構築した「どんなアプリでも Claude Code 駆動で自動生成できるハーネス」の説明書です。思想、使い方、フェーズごとにどのエージェント・スキル・フックが動くか、それぞれが何を読み込むか、決定論的に強制される部分とAIの判断に委ねられる部分の境界、ブランチ運用とその制限をまとめています。
 
-作成日: 2026-08-20 / 対象バージョン: v0（`harness/quality-baseline` ブランチ時点）
+作成日: 2026-08-20 / 更新日: 2026-08-20 / 対象バージョン: v1（`main` ブランチ時点）
+
+v0（要件定義〜組み上げの一気通貫、Hooks Rule 1〜7）に加え、v1 で以下を追加済み:
+フェーズ節目のコミット強制（Rule 8）・`status.yaml` 状態遷移の妥当性チェック（Rule 9）・
+Bash 経由の間接書き込みの実ブロック化・CI 連携（GitHub Actions によるサーバーサイド二重チェック、
+12節）。未着手の項目は `ROADMAP.md`「v1 で着手予定の項目」を参照。
 
 ---
 
@@ -55,8 +60,11 @@ graph TB
             HOOKS["hooks/<br/>依存ゼロPython"]
             TMPL["templates/<br/>雛形"]
             SCHEMAS["schemas/<br/>JSON Schema"]
-            SCRIPTS["scripts/<br/>決定論ロジック"]
+            SCRIPTS["scripts/<br/>決定論ロジック（ci_check.py含む）"]
             QUALITY["quality/<br/>品質ベースライン"]
+        end
+        subgraph GHACTIONS[".github/workflows/  ハーネス本体（書き込み保護対象）"]
+            CIYML["harness-checks.yml<br/>push/PRごとにci_check.pyを実行"]
         end
         subgraph APPS["apps/app-id/  生成物"]
             AUTONOMY["AUTONOMY.yaml"]
@@ -73,6 +81,7 @@ graph TB
     SETTINGS -.呼び出す.-> HOOKS
     AGENTS -.参照.-> CONV
     SKILLS -.実行.-> SCRIPTS
+    CIYML -.呼び出す.-> SCRIPTS
     REQ --> FOUND
     FOUND <--> DESIGN
     DESIGN --> FEAT
@@ -80,7 +89,7 @@ graph TB
     WT -. 同一相対パスを共有 .-> FEAT
 ```
 
-- `.claude/` と `harness/` を合わせて「ハーネス本体」と呼びます。テンプレートとして繰り返し使い回すことを想定しており、アプリ作成中は原則書き込み禁止です（[8節](#8-ブランチworktree-運用とその制限)）。
+- `.claude/`・`harness/`・`.github/` を合わせて「ハーネス本体」と呼びます。テンプレートとして繰り返し使い回すことを想定しており、アプリ作成中は原則書き込み禁止です（[8節](#8-ブランチworktree-運用とその制限)）。
 - `apps/<app-id>/` はアプリ作成のたびに `init-app` skill が生成する成果物です。
 
 ---
