@@ -1,0 +1,14 @@
+{
+  "name": "@pomodoro-timer/session-log",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "pomodoro-timer アプリの session-log 機能（完了した作業セッションの記録・一覧表示・全件クリア）",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "vitest": "^4.1"
+  }
+}
