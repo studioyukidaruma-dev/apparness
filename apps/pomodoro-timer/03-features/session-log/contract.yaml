@@ -1,0 +1,90 @@
+# schema: harness/schemas/feature-contract.schema.json
+# この機能の入出力の唯一の情報源。担当者はこのファイルと SPEC.md だけを見れば実装できる。
+# CONTRACT_APPROVED 以降は harness/hooks/pre_tool_use_guard.py により書き込みが凍結される。
+feature_id: "session-log"
+feature_name: "セッション記録"
+version: 1
+description: >-
+  完了した作業セッションを日時・所要時間とともに記録し、一覧・件数（本日の完了件数等）
+  として画面に表示する。記録は localStorage に永続化し、ユーザーは全件クリアできる。
+  休憩セッションは記録の対象としない。timer-core がどのようにカウントダウンしているかには
+  一切関知せず、work_session_completed イベントの受信だけに反応する。
+inputs:
+  - name: "work_session_completed"
+    json_schema:
+      type: object
+      additionalProperties: false
+      required: ["completed_at", "duration_seconds", "session_type"]
+      properties:
+        completed_at: { type: string, format: date-time }
+        duration_seconds: { type: integer, minimum: 1 }
+        session_type: { type: string, const: "WORK" }
+    required: true
+    description: >-
+      timer-core機能が作業セッション完了のたびに出力するイベント（interfaces[] 参照）。
+      休憩セッション完了時はこのイベント自体が発生しないため、この機能側で種別による
+      除外フィルタを実装する必要はない。
+    example:
+      completed_at: "2026-08-20T09:30:00Z"
+      duration_seconds: 1500
+      session_type: "WORK"
+  - name: "clear_records_command"
+    json_schema: { type: boolean, const: true }
+    required: false
+    description: >-
+      ユーザーがこの機能内の「全件クリア」操作を行ったことを表す内部入力。
+      他機能からは渡されない、この機能内で完結する入力。
+    example: true
+outputs:
+  - name: "session_summary"
+    json_schema:
+      type: object
+      required: ["total_count", "today_count", "records"]
+      properties:
+        total_count: { type: integer, minimum: 0 }
+        today_count: { type: integer, minimum: 0 }
+        records:
+          type: array
+          items:
+            type: object
+            required: ["completed_at", "duration_seconds"]
+            properties:
+              completed_at: { type: string, format: date-time }
+              duration_seconds: { type: integer, minimum: 1 }
+    description: >-
+      画面表示用の記録一覧・件数サマリ。この機能自身のUI表示にのみ使う内部出力で、
+      他機能には渡さない。
+    example:
+      total_count: 12
+      today_count: 3
+      records:
+        - completed_at: "2026-08-20T09:30:00Z"
+          duration_seconds: 1500
+side_effects:
+  - "受信した work_session_completed を localStorage キー `pomodoro-timer:session-records:v1` の配列に追記保存する"
+  - "clear_records_command 受信時、当該localStorageキーを空配列にリセットする"
+error_cases:
+  - code: "STORAGE_UNAVAILABLE"
+    condition: "localStorageへの読み書きに失敗した（プライベートブラウジング等の制限含む）"
+    response_shape: { type: object }
+tech_stack:
+  language: "JavaScript (ES2022, native ES Modules)"
+  framework: ""
+  libraries:
+    - name: "vitest"
+      version: "^4.1"
+      license: "MIT"
+      notes: >-
+        開発時のユニットテスト専用（devDependency）。本番の静的配信物には含めない。
+        記録の追加・集計（本日件数等）・全件クリアのロジックを純粋関数として切り出し
+        vitestで単体テストする。2026年8月時点でメンテナンスが活発であることを確認済み。
+        既知の重大な脆弱性報告なし。
+non_functional:
+  persistence: "ページを再読み込みしても記録を保持する。初回アクセス時は空の記録一覧とする。"
+test_strategy: >-
+  記録追加・本日件数集計・全件クリアのロジックを純粋関数として切り出しvitestで
+  単体テストする（例: 日付をまたいだ場合にtoday_countが正しく変わるか等）。
+  localStorageへの実読み書きはブラウザ環境に依存するため結合確認は手動で行う。
+created_at: null
+approved_at: null
+approved_by: null
